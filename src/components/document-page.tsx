@@ -15,18 +15,25 @@ const DocumentPage: React.FC<DocumentPageProps> = ({ fileName }) => {
     const fetchDocument = async () => {
       const currentDomain = window.location.origin;
       try {
-        const response = await fetch(`/api/document?fileName=${fileName}`); // API ルートを呼び出す
+        // APIルートではなく直接ファイルを取得
+        const response = await fetch(`/documents/${fileName}`);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const data = await response.json();
-        let pageContent = data.content;
-        pageContent = pageContent.replace(/{domain}/g, `${currentDomain}`);
-        setMarkdownContent(pageContent);
+        let markdownContent = await response.text(); // JSONではなくテキストとして取得
+        markdownContent = markdownContent.replace(
+          /images\//g,
+          "/documents/images/" // 画像パスの置換は必要に応じて維持
+        );
+        markdownContent = markdownContent.replace(
+          /{domain}/g,
+          `${currentDomain}`
+        );
+        setMarkdownContent(markdownContent);
       } catch (e: any) {
         console.error("Failed to fetch document:", e);
-        setError("ドキュメントの読み込みに失敗しました。"); // エラーメッセージを設定
-        setMarkdownContent(null); // markdownContent を null に設定
+        setError("ドキュメントの読み込みに失敗しました。");
+        setMarkdownContent(null);
       }
     };
 

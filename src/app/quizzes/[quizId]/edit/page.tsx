@@ -208,9 +208,8 @@ export default function EditQuizPage({ params }: PageProps) {
         </div>
 
         {error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="flex items-center">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>エラー</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}

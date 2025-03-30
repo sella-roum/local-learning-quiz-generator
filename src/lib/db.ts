@@ -56,7 +56,7 @@ class QuizDatabase extends Dexie {
 
   constructor() {
     super("QuizDatabase");
-    this.version(1).stores({
+    this.version(2).stores({
       files: "++id, name, type, uploadedAt",
       quizzes: "++id, fileId, category, createdAt, updatedAt",
       results: "++id, quizId, isCorrect, answeredAt, sessionId",

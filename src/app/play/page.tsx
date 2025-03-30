@@ -131,12 +131,12 @@ export default function PlayPage() {
         return;
       }
 
-      if (filteredQuizIds.length < quizCount) {
-        setError(
-          `選択されたカテゴリには${filteredQuizIds.length}問しかありません。問題数を減らすか、別のカテゴリを選択してください。`
-        );
-        return;
-      }
+      // if (filteredQuizIds.length < quizCount) {
+      //   setError(
+      //     `選択されたカテゴリには${filteredQuizIds.length}問しかありません。問題数を減らすか、別のカテゴリを選択してください。`
+      //   );
+      //   return;
+      // }
 
       // ランダムにクイズを選択
       const shuffledIds = [...filteredQuizIds].sort(() => Math.random() - 0.5);

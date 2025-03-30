@@ -1,0 +1,16 @@
+{
+  "name": "学習クイズジェネレーター",
+  "short_name": "学習クイズ",
+  "description": "AIを活用して自分の資料から4択クイズを生成・学習できるアプリ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
