@@ -38,6 +38,9 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            <Link href="/document" className="hover:text-primary">
+              <Info className="h-5 w-5" />
+            </Link>
           </div>
         </div>
       </header>
