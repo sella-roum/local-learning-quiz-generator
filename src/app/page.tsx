@@ -35,7 +35,14 @@ export default function HomePage() {
   // ファイル数、クイズ数、セッション数を取得
   const fileCount = useLiveQuery(() => db.files.count());
   const quizCount = useLiveQuery(() => db.quizzes.count());
-  const sessionCount = useLiveQuery(() => db.sessions.count());
+  const sessionCount = useLiveQuery(async () => {
+    const allSessions = await db.sessions
+      .orderBy("startedAt")
+      .reverse()
+      .toArray();
+    return allSessions.filter((session) => session.endedAt && session.startedAt)
+      .length; // 完了したセッションのみをフィルタリング
+  });
 
   // 最新のセッション結果を取得
   const latestSession = useLiveQuery(async () => {

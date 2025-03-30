@@ -56,9 +56,15 @@ export default function HistoryPage() {
   const itemsPerPage = 10;
 
   // セッション履歴を取得
-  const sessions = useLiveQuery(() =>
-    db.sessions.orderBy("startedAt").reverse().toArray()
-  );
+  const sessions = useLiveQuery(async () => {
+    const allSessions = await db.sessions
+      .orderBy("startedAt")
+      .reverse()
+      .toArray();
+    return allSessions.filter(
+      (session) => session.endedAt && session.startedAt
+    ); // 完了したセッションのみをフィルタリング
+  });
 
   // カテゴリの一覧を取得
   const categories = useLiveQuery(async () => {
@@ -72,20 +78,36 @@ export default function HistoryPage() {
   // 結果の統計を取得
   const stats = useLiveQuery(async () => {
     const results = await db.results.toArray();
-    const totalSessions = await db.sessions.count();
+    const allSessions = await db.sessions.toArray();
+    const completedSessions = allSessions.filter(
+      (session) => session.endedAt && session.startedAt
+    ); // 完了したセッションのみをフィルタリング
+    const totalSessions = completedSessions.length; // 完了したセッション数を使用
 
-    const correctCount = results.filter((r) => r.isCorrect).length;
-    const incorrectCount = results.length - correctCount;
+    // 完了したセッションの結果のみをフィルタリング
+    const completedSessionResults = results.filter((result) => {
+      return completedSessions.some(
+        (session) => session.id === result.sessionId
+      );
+    });
+
+    const correctCount = completedSessionResults.filter(
+      (r) => r.isCorrect
+    ).length;
+    const incorrectCount = completedSessionResults.length - correctCount;
     const accuracy =
-      results.length > 0 ? (correctCount / results.length) * 100 : 0;
+      completedSessionResults.length > 0
+        ? (correctCount / completedSessionResults.length) * 100
+        : 0;
 
-    // 日別の統計
+    // 日別の統計 (完了したセッションのみ対象)
     const sessionsByDate = new Map<
       string,
       { count: number; score: number; total: number }
     >();
 
-    for (const session of await db.sessions.toArray()) {
+    for (const session of completedSessions) {
+      // 完了したセッションのみをループ処理
       const dateStr = format(new Date(session.startedAt), "yyyy-MM-dd");
 
       if (!sessionsByDate.has(dateStr)) {
@@ -112,7 +134,7 @@ export default function HistoryPage() {
 
     return {
       totalSessions,
-      totalAnswered: results.length,
+      totalAnswered: completedSessionResults.length, // 完了したセッションの結果数を使用
       correctCount,
       incorrectCount,
       accuracy,

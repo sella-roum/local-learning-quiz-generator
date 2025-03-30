@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { db, Session, cleanupEmptySessions } from "@/lib/db";
+import { db, type Session } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { formatDate } from "@/lib/utils";
 import { QuizHistoryChart } from "@/components/quiz-history-chart";
@@ -51,6 +51,7 @@ export default function PlayPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [quizCount, setQuizCount] = useState(10);
+  const [timeLimit, setTimeLimit] = useState(30);
   const [isDeleteHistoryDialogOpen, setIsDeleteHistoryDialogOpen] =
     useState(false);
   const router = useRouter();
@@ -69,27 +70,46 @@ export default function PlayPage() {
   }, [quizzes]);
 
   // セッション履歴を取得
-  // **sessions の型を明示的に指定**
   const sessions = useLiveQuery<Session[] | undefined>(async () => {
-    await cleanupEmptySessions();
-    return db.sessions.orderBy("startedAt").reverse().toArray();
+    const allSessions = await db.sessions
+      .orderBy("startedAt")
+      .reverse()
+      .toArray();
+    return allSessions.filter(
+      (session) => session.endedAt && session.startedAt
+    );
   });
 
   // 結果の統計を取得
   const stats = useLiveQuery(async () => {
     const results = await db.results.toArray();
     const totalQuizzes = await db.quizzes.count();
-    const totalSessions = await db.sessions.count();
+    const allSessions = await db.sessions.toArray();
+    const completedSessions = allSessions.filter(
+      (session) => session.endedAt && session.startedAt
+    ); // 完了したセッションのみをフィルタリング
+    const totalSessions = completedSessions.length; // 完了したセッション数を使用
 
-    const correctCount = results.filter((r) => r.isCorrect).length;
-    const incorrectCount = results.length - correctCount;
+    // 完了したセッションの結果のみをフィルタリング
+    const completedSessionResults = results.filter((result) => {
+      return completedSessions.some(
+        (session) => session.id === result.sessionId
+      );
+    });
+
+    const correctCount = completedSessionResults.filter(
+      (r) => r.isCorrect
+    ).length;
+    const incorrectCount = completedSessionResults.length - correctCount;
     const accuracy =
-      results.length > 0 ? (correctCount / results.length) * 100 : 0;
+      completedSessionResults.length > 0
+        ? (correctCount / completedSessionResults.length) * 100
+        : 0;
 
     return {
       totalQuizzes,
       totalSessions,
-      totalAnswered: results.length,
+      totalAnswered: completedSessionResults.length, // 完了したセッションの結果数を使用
       correctCount,
       incorrectCount,
       accuracy,
@@ -98,12 +118,12 @@ export default function PlayPage() {
 
   // クイズを開始する関数
   const handleStartQuiz = async () => {
-    // **多重実行防止: 処理中はreturnする**
+    // 多重実行防止
     if (isStartingQuiz) {
       return;
     }
 
-    setIsStartingQuiz(true); // **処理開始時にフラグをtrueに**
+    setIsStartingQuiz(true);
     setError(null);
     try {
       // カテゴリでフィルタリングしたクイズIDを取得
@@ -128,21 +148,23 @@ export default function PlayPage() {
             ? "クイズがありません。先にクイズを作成してください。"
             : `カテゴリ「${selectedCategory}」のクイズがありません。`
         );
+        setIsStartingQuiz(false);
         return;
       }
 
-      // if (filteredQuizIds.length < quizCount) {
-      //   setError(
-      //     `選択されたカテゴリには${filteredQuizIds.length}問しかありません。問題数を減らすか、別のカテゴリを選択してください。`
-      //   );
-      //   return;
-      // }
+      if (filteredQuizIds.length < quizCount) {
+        setError(
+          `選択されたカテゴリには${filteredQuizIds.length}問しかありません。問題数を減らすか、別のカテゴリを選択してください。`
+        );
+        setIsStartingQuiz(false);
+        return;
+      }
 
       // ランダムにクイズを選択
       const shuffledIds = [...filteredQuizIds].sort(() => Math.random() - 0.5);
       const selectedIds = shuffledIds.slice(0, quizCount);
 
-      // **クイズ選択が成功した場合のみセッションを作成**
+      // クイズ選択が成功した場合のみセッションを作成
       if (selectedIds && selectedIds.length > 0) {
         // セッションを作成
         const sessionId = crypto.randomUUID();
@@ -154,14 +176,16 @@ export default function PlayPage() {
           totalQuestions: selectedIds.length,
         });
 
-        // セッションページに遷移
-        router.push(`/play/session?sessionId=${sessionId}`);
+        // セッションページに遷移（制限時間も渡す）
+        router.push(
+          `/play/session?sessionId=${sessionId}&timeLimit=${timeLimit}`
+        );
       }
     } catch (error) {
       console.error("クイズ開始中にエラーが発生しました:", error);
       setError("クイズ開始中にエラーが発生しました");
     } finally {
-      setIsStartingQuiz(false); // **処理終了時にフラグをfalseに**
+      setIsStartingQuiz(false);
     }
   };
 
@@ -253,16 +277,49 @@ export default function PlayPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="timeLimit"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    制限時間
+                  </label>
+                  <Select
+                    value={timeLimit.toString()}
+                    onValueChange={(value) => setTimeLimit(Number(value))}
+                  >
+                    <SelectTrigger id="timeLimit">
+                      <SelectValue placeholder="制限時間を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10秒</SelectItem>
+                      <SelectItem value="15">15秒</SelectItem>
+                      <SelectItem value="30">30秒</SelectItem>
+                      <SelectItem value="45">45秒</SelectItem>
+                      <SelectItem value="60">60秒</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
             <CardFooter>
               <Button
                 onClick={handleStartQuiz}
-                disabled={!quizzes || quizzes.length === 0}
+                disabled={!quizzes || quizzes.length === 0 || isStartingQuiz}
                 className="w-full"
               >
-                <Play className="mr-2 h-4 w-4" />
-                クイズを開始
+                {isStartingQuiz ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-b-transparent border-white rounded-full"></div>
+                    準備中...
+                  </div>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    クイズを開始
+                  </>
+                )}
               </Button>
             </CardFooter>
           </Card>
@@ -282,13 +339,15 @@ export default function PlayPage() {
                   カテゴリ別、日付別に絞り込んで表示することもできます。
                 </p>
               </div>
+            </CardContent>
+            <CardFooter>
               <Link href="/play/history" className="w-full">
                 <Button variant="outline" className="w-full">
                   <History className="mr-2 h-4 w-4" />
                   回答履歴を見る
                 </Button>
               </Link>
-            </CardContent>
+            </CardFooter>
           </Card>
         </div>
 
@@ -389,6 +448,7 @@ export default function PlayPage() {
                 className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
               >
                 {sessions.slice(0, 6).map((session, index) => {
+                  console.log({ session });
                   const score = session.score || 0;
                   const total = session.totalQuestions || 0;
                   const percentage = total > 0 ? (score / total) * 100 : 0;
