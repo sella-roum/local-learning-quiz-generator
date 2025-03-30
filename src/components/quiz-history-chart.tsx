@@ -156,25 +156,6 @@ export function QuizHistoryChart() {
             barSize={20} // バーの最大幅
             animationDuration={500}
           />
-          <Line
-            type="monotone"
-            dataKey="正答率"
-            stroke={secondaryColor} // セカンダリカラーを使用
-            strokeWidth={2}
-            dot={{
-              r: 4,
-              fill: secondaryColor,
-              stroke: tooltipBg,
-              strokeWidth: 1,
-            }}
-            activeDot={{
-              r: 6,
-              fill: secondaryColor,
-              stroke: tooltipBg,
-              strokeWidth: 2,
-            }}
-            animationDuration={500}
-          />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
