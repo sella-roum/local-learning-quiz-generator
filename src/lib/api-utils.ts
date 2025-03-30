@@ -1,10 +1,12 @@
-interface QuizOption {
+export interface QuizOption {
   text: string;
   isCorrect: boolean;
 }
 
 export interface GenerateQuiz {
   id: string;
+  fileId: number | undefined;
+  fileName: string | undefined;
   question: string;
   correctOptionIndex: number;
   options: QuizOption[];

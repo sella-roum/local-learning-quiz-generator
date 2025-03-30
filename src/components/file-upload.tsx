@@ -154,16 +154,16 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
             <span className="text-xs mt-1 text-muted-foreground">テキスト</span>
           </div>
           <div className="flex flex-col items-center">
-            <div className="rounded-full bg-red-100 dark:bg-red-900/30 p-2">
-              <FileType className="h-5 w-5 text-red-500" />
-            </div>
-            <span className="text-xs mt-1 text-muted-foreground">PDF</span>
-          </div>
-          <div className="flex flex-col items-center">
             <div className="rounded-full bg-purple-100 dark:bg-purple-900/30 p-2">
               <Image className="h-5 w-5 text-purple-500" />
             </div>
             <span className="text-xs mt-1 text-muted-foreground">画像</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <div className="rounded-full bg-red-100 dark:bg-red-900/30 p-2">
+              <FileType className="h-5 w-5 text-red-500" />
+            </div>
+            <span className="text-xs mt-1 text-muted-foreground">PDF</span>
           </div>
         </div>
       );
@@ -215,11 +215,8 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
                 disabled={isUploading}
                 onClick={(e) => {
                   e.stopPropagation();
-                  console.log("fileInputRef", fileInputRef.current); // ←console.log を追加
-                  console.log("fileInputRef");
                   if (fileInputRef.current) {
                     fileInputRef.current.click();
-                    console.log("fileInputRef");
                   }
                 }}
               >

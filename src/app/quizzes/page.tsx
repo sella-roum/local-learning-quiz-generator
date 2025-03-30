@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,14 @@ import { QuizExportDialog } from "@/components/quiz-export-dialog";
 import { QuizImportDialog } from "@/components/quiz-import-dialog";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function QuizzesPage() {
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +69,7 @@ export default function QuizzesPage() {
   const [isDeleting, setIsDeleting] = useState<number | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [isDeleteAllDialogOpen, setIsDeleteAllDialogOpen] = useState(false);
   const itemsPerPage = 10;
   const router = useRouter();
 
@@ -130,34 +139,50 @@ export default function QuizzesPage() {
   }, [currentPage]);
 
   // クイズを削除する関数
-  const handleDeleteQuiz = useCallback(
-    async (quizId: number) => {
-      try {
-        setIsDeleting(quizId);
+  const handleDeleteQuiz = async (quizId: number) => {
+    try {
+      setIsDeleting(quizId);
 
-        // 関連する結果も削除
-        await db.results.where("quizId").equals(quizId).delete();
+      // 関連する結果も削除
+      await db.results.where("quizId").equals(quizId).delete();
 
-        // クイズを削除
-        await db.quizzes.delete(quizId);
+      // クイズを削除
+      await db.quizzes.delete(quizId);
 
-        // 現在のページのクイズが1つだけで、最後のページの場合は前のページに戻る
-        if (
-          currentQuizzes.length === 1 &&
-          currentPage > 1 &&
-          currentPage === totalPages
-        ) {
-          setCurrentPage(currentPage - 1);
-        }
-      } catch (error) {
-        console.error("クイズの削除中にエラーが発生しました:", error);
-        setError("クイズの削除中にエラーが発生しました");
-      } finally {
-        setIsDeleting(null);
+      // 現在のページのクイズが1つだけで、最後のページの場合は前のページに戻る
+      if (
+        currentQuizzes.length === 1 &&
+        currentPage > 1 &&
+        currentPage === totalPages
+      ) {
+        setCurrentPage(currentPage - 1);
       }
-    },
-    [currentQuizzes, currentPage, totalPages]
-  );
+    } catch (error) {
+      console.error("クイズの削除中にエラーが発生しました:", error);
+      setError("クイズの削除中にエラーが発生しました");
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  // すべてのクイズを削除する関数
+  const handleDeleteAllQuizzes = async () => {
+    try {
+      // すべての結果を削除
+      await db.results.clear();
+
+      // すべてのセッションを削除
+      await db.sessions.clear();
+
+      // すべてのクイズを削除
+      await db.quizzes.clear();
+
+      setIsDeleteAllDialogOpen(false);
+    } catch (error) {
+      console.error("クイズの一括削除中にエラーが発生しました:", error);
+      setError("クイズの一括削除中にエラーが発生しました");
+    }
+  };
 
   // クイズを編集する関数
   const handleEditQuiz = (quizId: number) => {
@@ -170,7 +195,7 @@ export default function QuizzesPage() {
   }, [searchTerm, selectedCategory]);
 
   // ページネーションリンクを生成
-  const renderPaginationLinks = useCallback(() => {
+  const renderPaginationLinks = () => {
     const links = [];
 
     // 最初のページへのリンク
@@ -243,7 +268,7 @@ export default function QuizzesPage() {
     }
 
     return links;
-  }, [currentPage, totalPages]);
+  };
 
   // インポート完了時の処理
   const handleImportComplete = () => {
@@ -348,20 +373,32 @@ export default function QuizzesPage() {
                 問目を表示
               </div>
 
-              {categories && categories.length > 0 && (
-                <div className="flex flex-wrap gap-1 justify-end">
-                  {selectedCategory !== "all" && (
-                    <Badge className="bg-primary/20 text-primary hover:bg-primary/30">
-                      {selectedCategory}
-                    </Badge>
-                  )}
-                  {searchTerm && (
-                    <Badge className="bg-secondary/20 text-secondary hover:bg-secondary/30">
-                      検索: {searchTerm}
-                    </Badge>
-                  )}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {categories && categories.length > 0 && (
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {selectedCategory !== "all" && (
+                      <Badge className="bg-primary/20 text-primary hover:bg-primary/30">
+                        {selectedCategory}
+                      </Badge>
+                    )}
+                    {searchTerm && (
+                      <Badge className="bg-secondary/20 text-secondary hover:bg-secondary/30">
+                        検索: {searchTerm}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDeleteAllDialogOpen(true)}
+                  className="text-destructive hover:bg-destructive/100"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  すべて削除
+                </Button>
+              </div>
             </div>
 
             <AnimatePresence>
@@ -456,13 +493,13 @@ export default function QuizzesPage() {
                           )}
                         </div>
                       </CardContent>
-                      <CardFooter className="flex justify-between border-t bg-muted/20">
+                      <CardFooter className="flex pt-6 justify-between border-t bg-muted/20">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleDeleteQuiz(quiz.id as number)}
                           disabled={isDeleting === quiz.id}
-                          className="text-destructive hover:bg-destructive/10"
+                          className="text-destructive hover:bg-destructive/100"
                         >
                           {isDeleting === quiz.id ? (
                             <>
@@ -480,7 +517,7 @@ export default function QuizzesPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleEditQuiz(quiz.id as number)}
-                          className="text-primary hover:bg-primary/10"
+                          className="text-primary hover:bg-primary/100"
                         >
                           <Edit className="h-4 w-4 mr-1" />
                           編集
@@ -527,6 +564,7 @@ export default function QuizzesPage() {
               <div className="space-y-2">
                 <h3 className="text-xl font-medium">クイズがありません</h3>
                 <p className="text-muted-foreground">
+                  \
                   {searchTerm || selectedCategory !== "all"
                     ? "検索条件に一致するクイズがありません。"
                     : "クイズがありません。ファイル管理画面からファイルを選択し、クイズを作成してください。"}
@@ -566,6 +604,32 @@ export default function QuizzesPage() {
         onOpenChange={setImportDialogOpen}
         onImportComplete={handleImportComplete}
       />
+
+      {/* 全クイズ削除確認ダイアログ */}
+      <Dialog
+        open={isDeleteAllDialogOpen}
+        onOpenChange={setIsDeleteAllDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>すべてのクイズを削除</DialogTitle>
+            <DialogDescription>
+              すべてのクイズと関連する回答履歴を削除します。この操作は元に戻せません。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteAllDialogOpen(false)}
+            >
+              キャンセル
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteAllQuizzes}>
+              すべて削除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }

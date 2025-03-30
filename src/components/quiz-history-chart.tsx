@@ -24,7 +24,7 @@ export function QuizHistoryChart() {
         const { width, height } = containerRef.current.getBoundingClientRect();
         setDimensions({
           width: Math.floor(width),
-          height: Math.max(300, Math.floor(height)), // 最低高さを300pxに設定
+          height: Math.max(200, Math.floor(height)), // 最低高さを200pxに設定
         });
       }
     };
@@ -34,7 +34,17 @@ export function QuizHistoryChart() {
 
     // リサイズイベントを監視
     window.addEventListener("resize", updateDimensions);
-    return () => window.removeEventListener("resize", updateDimensions);
+
+    // ResizeObserverを使用してコンテナのサイズ変更を監視
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateDimensions);
+      resizeObserver.disconnect();
+    };
   }, []);
 
   // グラフを描画
@@ -68,7 +78,7 @@ export function QuizHistoryChart() {
     // グラフの設定
     const width = canvas.width;
     const height = canvas.height;
-    const padding = { top: 40, right: 20, bottom: 40, left: 50 };
+    const padding = { top: 30, right: 20, bottom: 30, left: 40 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
 
@@ -86,8 +96,8 @@ export function QuizHistoryChart() {
     ctx.lineWidth = 1;
 
     // 水平グリッド線
-    for (let i = 0; i <= 5; i++) {
-      const y = padding.top + (chartHeight / 5) * i;
+    for (let i = 0; i <= 4; i++) {
+      const y = padding.top + (chartHeight / 4) * i;
       ctx.moveTo(padding.left, y);
       ctx.lineTo(width - padding.right, y);
     }
@@ -119,14 +129,14 @@ export function QuizHistoryChart() {
 
     // Y軸のラベル（0%, 25%, 50%, 75%, 100%）
     ctx.fillStyle = isDark ? "#e2e8f0" : "#334155"; // slate-200 or slate-700
-    ctx.font = "12px sans-serif";
+    ctx.font = "10px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
 
     for (let i = 0; i <= 4; i++) {
       const y = padding.top + (chartHeight / 4) * (4 - i);
       const label = `${i * 25}%`;
-      ctx.fillText(label, padding.left - 10, y);
+      ctx.fillText(label, padding.left - 5, y);
     }
 
     // データがない場合は終了
@@ -140,7 +150,7 @@ export function QuizHistoryChart() {
     });
 
     // バーの幅と間隔を計算
-    const barWidth = Math.min(50, (chartWidth / recentSessions.length) * 0.6);
+    const barWidth = Math.min(30, (chartWidth / recentSessions.length) * 0.6);
     const barSpacing =
       (chartWidth - barWidth * recentSessions.length) /
       (recentSessions.length + 1);
@@ -170,7 +180,7 @@ export function QuizHistoryChart() {
       const y = height - padding.bottom - barHeight;
 
       // 角丸の棒グラフ
-      const radius = Math.min(barWidth / 2, 8);
+      const radius = Math.min(barWidth / 2, 4);
       ctx.beginPath();
       ctx.moveTo(x + radius, y);
       ctx.lineTo(x + barWidth - radius, y);
@@ -184,16 +194,16 @@ export function QuizHistoryChart() {
 
       // 正答率の値を表示
       ctx.fillStyle = isDark ? "#e2e8f0" : "#334155";
-      ctx.font = "bold 12px sans-serif";
+      ctx.font = "bold 10px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      ctx.fillText(`${Math.round(rate)}%`, x + barWidth / 2, y - 5);
+      ctx.fillText(`${Math.round(rate)}%`, x + barWidth / 2, y - 2);
     });
 
     // 折れ線グラフを描画
     ctx.beginPath();
     ctx.strokeStyle = isDark ? "#818cf8" : "#4f46e5"; // indigo-400/600
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
 
     correctRates.forEach((rate, index) => {
       const x =
@@ -222,17 +232,17 @@ export function QuizHistoryChart() {
       const y = height - padding.bottom - (rate / 100) * chartHeight;
 
       ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.fillStyle = isDark ? "#e0e7ff" : "#ffffff"; // indigo-100/white
       ctx.fill();
       ctx.strokeStyle = isDark ? "#818cf8" : "#4f46e5"; // indigo-400/600
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2;
       ctx.stroke();
     });
 
     // X軸のラベル（セッション番号）
     ctx.fillStyle = isDark ? "#e2e8f0" : "#334155"; // slate-200 or slate-700
-    ctx.font = "12px sans-serif";
+    ctx.font = "10px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
 
@@ -243,21 +253,21 @@ export function QuizHistoryChart() {
         barWidth * index +
         barWidth / 2;
       const sessionNumber = index + 1;
-      ctx.fillText(`#${sessionNumber}`, x, height - padding.bottom + 10);
+      ctx.fillText(`#${sessionNumber}`, x, height - padding.bottom + 5);
     });
 
     // グラフタイトル
     ctx.fillStyle = isDark ? "#e2e8f0" : "#334155"; // slate-200 or slate-700
-    ctx.font = "bold 16px sans-serif";
+    ctx.font = "bold 12px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText("クイズ正答率の推移", width / 2, 10);
+    // ctx.fillText("クイズ正答率の推移", width / 2, 10);
   }, [sessions, dimensions, isDark]);
 
   return (
     <div
       ref={containerRef}
-      className="w-full h-full min-h-[300px] flex items-center justify-center p-2 rounded-lg bg-card animate-fade-in"
+      className="w-full h-full flex items-center justify-center p-2 rounded-lg bg-card animate-fade-in"
     >
       {sessions && sessions.length > 0 ? (
         <canvas

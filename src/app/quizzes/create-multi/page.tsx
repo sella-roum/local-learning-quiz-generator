@@ -44,8 +44,9 @@ import {
   Loader2,
   Save,
   Plus,
-  X,
+  FileText,
   Edit,
+  X,
   ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -54,12 +55,12 @@ import { generateQuizzes, type GenerateQuiz } from "@/lib/api-utils";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export default function CreateQuizPage() {
+export default function CreateMultiQuizPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const fileId = searchParams.get("fileId");
+  const fileIds = searchParams.getAll("fileId");
 
-  const [file, setFile] = useState<FileItem | null>(null);
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedQuizzes, setGeneratedQuizzes] = useState<GenerateQuiz[]>([]);
@@ -86,6 +87,7 @@ export default function CreateQuizPage() {
   const [openCategorySelect, setOpenCategorySelect] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [activeTab, setActiveTab] = useState("options");
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [quizzesToSave, setQuizzesToSave] = useState<GenerateQuiz[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [editingQuizIndex, setEditingQuizIndex] = useState<number | null>(null);
@@ -101,12 +103,16 @@ export default function CreateQuizPage() {
 
   // ファイルIDからファイル情報を取得
   useEffect(() => {
-    if (fileId) {
-      const fetchFile = async () => {
+    if (fileIds.length > 0) {
+      const fetchFiles = async () => {
         try {
-          const fileData = await db.files.get(Number(fileId));
-          if (fileData) {
-            setFile(fileData);
+          const fileData = await Promise.all(
+            fileIds.map((id) => db.files.get(Number(id)))
+          );
+          const validFiles = fileData.filter(Boolean) as FileItem[];
+
+          if (validFiles.length > 0) {
+            setFiles(validFiles);
           } else {
             setError("指定されたファイルが見つかりませんでした");
           }
@@ -116,13 +122,13 @@ export default function CreateQuizPage() {
         }
       };
 
-      fetchFile();
+      fetchFiles();
     }
-  }, [fileId]);
+  }, [fileIds]);
 
   // クイズを自動生成する関数
   const handleGenerateQuizzes = useCallback(async () => {
-    if (!file) return;
+    if (files.length === 0) return;
 
     setIsLoading(true);
     setError(null);
@@ -130,55 +136,67 @@ export default function CreateQuizPage() {
     setQuizzesToSave([]);
 
     try {
-      // ファイルの内容を取得
-      let fileContent: string | ArrayBuffer;
+      let allQuizzes: GenerateQuiz[] = [];
 
-      if (file.type.startsWith("text/") || file.type === "application/pdf") {
-        fileContent = file.extractedText || "";
-      } else {
-        // 画像ファイルの場合はBlobからArrayBufferを取得
-        fileContent = await file.blob.arrayBuffer();
+      // 各ファイルからクイズを生成
+      for (const file of files) {
+        // ファイルの内容を取得
+        let fileContent: string | ArrayBuffer;
+
+        if (file.type.startsWith("text/") || file.type === "application/pdf") {
+          fileContent = file.extractedText || "";
+        } else {
+          // 画像ファイルの場合はBlobからArrayBufferを取得
+          fileContent = await file.blob.arrayBuffer();
+        }
+
+        // クイズを生成
+        const fileObject = new File([file.blob], file.name, {
+          type: file.type,
+        });
+        const quizzesPerFile = await generateQuizzes(
+          fileObject,
+          fileContent,
+          file.keywords,
+          {
+            ...generationOptions,
+            // 各ファイルから生成する問題数を調整
+            count: Math.max(
+              1,
+              Math.floor(generationOptions.count / files.length)
+            ),
+            category:
+              generationOptions.category === "新規カテゴリを作成"
+                ? newCategory
+                : generationOptions.category,
+          }
+        );
+
+        // ファイル情報を各クイズに追加
+        const quizzesWithFileInfo = quizzesPerFile.map((quiz) => ({
+          ...quiz,
+          fileId: file.id,
+          fileName: file.name,
+        }));
+
+        allQuizzes = [...allQuizzes, ...quizzesWithFileInfo];
       }
 
-      // クイズを生成
-      const fileObject = new File([file.blob], file.name, { type: file.type });
-      const quizzes = await generateQuizzes(
-        fileObject,
-        fileContent,
-        file.keywords,
-        {
-          ...generationOptions,
-          category:
-            generationOptions.category === "新規カテゴリを作成"
-              ? newCategory
-              : generationOptions.category,
-        }
-      );
+      setGeneratedQuizzes(allQuizzes);
+      setQuizzesToSave(allQuizzes);
 
-      // ファイル情報を各クイズに追加
-      const quizzesWithFileInfo = quizzes.map((quiz) => ({
-        ...quiz,
-        fileId: file.id,
-        fileName: file.name,
-      }));
-
-      setGeneratedQuizzes(quizzesWithFileInfo);
-      setQuizzesToSave(quizzesWithFileInfo);
-
-      if (quizzesWithFileInfo.length > 0) {
+      if (allQuizzes.length > 0) {
         setCurrentQuizIndex(0);
         setEditedQuiz({
           category:
-            quizzesWithFileInfo[0].category ||
+            allQuizzes[0].category ||
             (generationOptions.category === "新規カテゴリを作成"
               ? newCategory
               : generationOptions.category),
-          question: quizzesWithFileInfo[0].question,
-          options: quizzesWithFileInfo[0].options.map((option) =>
-            option.toString()
-          ),
-          correctOptionIndex: quizzesWithFileInfo[0].correctOptionIndex,
-          explanation: quizzesWithFileInfo[0].explanation || "",
+          question: allQuizzes[0].question,
+          options: allQuizzes[0].options.map((option) => option.toString()),
+          correctOptionIndex: allQuizzes[0].correctOptionIndex,
+          explanation: allQuizzes[0].explanation || "",
         });
         setActiveTab("review");
       }
@@ -192,7 +210,7 @@ export default function CreateQuizPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [generationOptions, newCategory, file]);
+  }, [files, generationOptions, newCategory]);
 
   // クイズを保存する関数
   const handleSaveQuizzes = useCallback(async () => {
@@ -324,9 +342,11 @@ export default function CreateQuizPage() {
     <MainLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">クイズ作成</h2>
+          <h2 className="text-3xl font-bold tracking-tight">
+            複数ファイルからクイズ作成
+          </h2>
           <p className="text-muted-foreground">
-            ファイルの内容からAIを使って4択クイズを生成します。
+            選択した複数のファイルからAIを使って4択クイズを生成します。
           </p>
         </div>
 
@@ -338,7 +358,7 @@ export default function CreateQuizPage() {
           </Alert>
         )}
 
-        {file ? (
+        {files.length > 0 ? (
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
@@ -357,28 +377,50 @@ export default function CreateQuizPage() {
             <TabsContent value="options" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>ソースファイル: {file.name}</CardTitle>
+                  <CardTitle>選択したファイル ({files.length}件)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <div>
-                      <span className="font-semibold">ファイルタイプ:</span>{" "}
-                      {file.type}
-                    </div>
-                    <div>
-                      <span className="font-semibold">キーワード:</span>{" "}
-                      {file.keywords.map((keyword, index) => (
-                        <Badge variant="outline" key={index}>
-                          {keyword}
-                        </Badge>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {files.map((file, index) => (
+                        <Card
+                          key={file.id}
+                          className={`border ${
+                            index === selectedFileIndex ? "border-primary" : ""
+                          }`}
+                        >
+                          <CardHeader className="p-3 pb-2">
+                            <CardTitle className="text-sm flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-primary" />
+                              <span className="truncate">{file.name}</span>
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="p-3 pt-0 text-xs">
+                            <div>
+                              <span className="font-semibold">キーワード:</span>{" "}
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {file.keywords
+                                  .slice(0, 3)
+                                  .map((keyword, idx) => (
+                                    <Badge
+                                      key={idx}
+                                      variant="outline"
+                                      className="text-xs"
+                                    >
+                                      {keyword}
+                                    </Badge>
+                                  ))}
+                                {file.keywords.length > 3 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    +{file.keywords.length - 3}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
                       ))}
                     </div>
-                    {file.summary && (
-                      <div>
-                        <span className="font-semibold">概要:</span>{" "}
-                        <p className="text-sm">{file.summary}</p>
-                      </div>
-                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -390,7 +432,7 @@ export default function CreateQuizPage() {
                 <CardContent>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="count">生成数</Label>
+                      <Label htmlFor="count">生成数 (合計)</Label>
                       <Select
                         value={generationOptions.count.toString()}
                         onValueChange={(value) =>
@@ -404,12 +446,17 @@ export default function CreateQuizPage() {
                           <SelectValue placeholder="生成数を選択" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1">1問</SelectItem>
                           <SelectItem value="3">3問</SelectItem>
                           <SelectItem value="5">5問</SelectItem>
                           <SelectItem value="10">10問</SelectItem>
+                          <SelectItem value="15">15問</SelectItem>
+                          <SelectItem value="20">20問</SelectItem>
                         </SelectContent>
                       </Select>
+                      <p className="text-xs text-muted-foreground">
+                        各ファイルから均等に問題を生成します (合計
+                        {generationOptions.count}問)
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -730,9 +777,7 @@ export default function CreateQuizPage() {
                                       </CardTitle>
                                       <div className="flex items-center gap-2">
                                         <Badge variant="outline">
-                                          {quiz.category ||
-                                            generationOptions.category ||
-                                            "カテゴリなし"}
+                                          {quiz.fileName || "不明なファイル"}
                                         </Badge>
                                         <Button
                                           variant="ghost"

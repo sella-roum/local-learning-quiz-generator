@@ -269,12 +269,12 @@ export default function ResultsPage() {
             </div>
           </CardContent>
           <CardFooter className="flex justify-center gap-4 border-t bg-muted/50 p-4">
-            <Link href="/play">
+            {/* <Link href="/play">
               <Button variant="outline" className="w-32">
                 <Home className="mr-2 h-4 w-4" />
                 ホームへ
               </Button>
-            </Link>
+            </Link> */}
             <Link href="/play">
               <Button className="w-32">
                 <Play className="mr-2 h-4 w-4" />
@@ -319,7 +319,7 @@ export default function ResultsPage() {
                         問題 {index + 1}
                       </CardTitle>
                       {result.quiz?.category && (
-                        <span className="text-xs px-2 py-1 rounded-full bg-secondary/10 text-secondary-foreground">
+                        <span className="text-xs px-2 py-1 rounded-full bg-secondary/10">
                           {result.quiz.category}
                         </span>
                       )}

@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
 
-// ファイル情報の型���義
+// ファイル情報の型定義
 export interface FileItem {
   id?: number;
   name: string;
@@ -76,5 +76,38 @@ export async function isDatabaseAvailable(): Promise<boolean> {
   } catch (error) {
     console.error("IndexedDBが利用できません:", error);
     return false;
+  }
+}
+
+// 回答履歴のないセッションを削除する関数
+export async function cleanupEmptySessions(): Promise<void> {
+  try {
+    console.log("🧹 空のセッションレコードのクリーンアップを開始します...");
+    const sessions = await db.sessions.toArray();
+
+    for (const session of sessions) {
+      const resultCount = await db.results
+        .where("sessionId")
+        .equals(session.id!)
+        .count();
+      // **問題数と回答数が一致しないセッションも削除対象に追加**
+      if (
+        (resultCount === 0 && session.endedAt === undefined) ||
+        (session.totalQuestions !== undefined &&
+          resultCount !== session.totalQuestions &&
+          session.endedAt === undefined)
+      ) {
+        console.log(
+          `🗑️ セッションID: ${session.id} を削除します (回答履歴なし、または問題数と回答数不一致)`
+        );
+        await db.sessions.delete(session.id!);
+      }
+    }
+    console.log("✅ 空のセッションレコードのクリーンアップが完了しました。");
+  } catch (error) {
+    console.error(
+      "🚨 空のセッションレコードのクリーンアップ中にエラーが発生しました:",
+      error
+    );
   }
 }

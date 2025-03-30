@@ -481,7 +481,13 @@ export default function QuizSessionPage() {
                               ]
                             } です。`}
                         {currentQuiz.explanation && (
-                          <div className="mt-2 pt-2 border-t border-green-300 dark:border-green-700">
+                          <div
+                            className={`mt-2 pt-2 border-t ${
+                              isCorrect
+                                ? "border-green-300 dark:border-green-700"
+                                : "border-red-300 dark:border-red-700"
+                            }`}
+                          >
                             <div className="flex items-center gap-1 mb-1">
                               <HelpCircle className="h-4 w-4" />
                               <span className="font-semibold">解説:</span>

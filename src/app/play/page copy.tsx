@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { db, Session, cleanupEmptySessions } from "@/lib/db";
+import { db } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { formatDate } from "@/lib/utils";
 import { QuizHistoryChart } from "@/components/quiz-history-chart";
@@ -33,8 +33,6 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
-  History,
-  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -54,7 +52,6 @@ export default function PlayPage() {
   const [isDeleteHistoryDialogOpen, setIsDeleteHistoryDialogOpen] =
     useState(false);
   const router = useRouter();
-  const [isStartingQuiz, setIsStartingQuiz] = useState(false);
 
   // クイズの一覧を取得
   const quizzes = useLiveQuery(() => db.quizzes.toArray());
@@ -69,11 +66,9 @@ export default function PlayPage() {
   }, [quizzes]);
 
   // セッション履歴を取得
-  // **sessions の型を明示的に指定**
-  const sessions = useLiveQuery<Session[] | undefined>(async () => {
-    await cleanupEmptySessions();
-    return db.sessions.orderBy("startedAt").reverse().toArray();
-  });
+  const sessions = useLiveQuery(() =>
+    db.sessions.orderBy("startedAt").reverse().toArray()
+  );
 
   // 結果の統計を取得
   const stats = useLiveQuery(async () => {
@@ -98,13 +93,6 @@ export default function PlayPage() {
 
   // クイズを開始する関数
   const handleStartQuiz = async () => {
-    // **多重実行防止: 処理中はreturnする**
-    if (isStartingQuiz) {
-      return;
-    }
-
-    setIsStartingQuiz(true); // **処理開始時にフラグをtrueに**
-    setError(null);
     try {
       // カテゴリでフィルタリングしたクイズIDを取得
       let filteredQuizIds: number[] = [];
@@ -142,26 +130,21 @@ export default function PlayPage() {
       const shuffledIds = [...filteredQuizIds].sort(() => Math.random() - 0.5);
       const selectedIds = shuffledIds.slice(0, quizCount);
 
-      // **クイズ選択が成功した場合のみセッションを作成**
-      if (selectedIds && selectedIds.length > 0) {
-        // セッションを作成
-        const sessionId = crypto.randomUUID();
-        await db.sessions.add({
-          id: sessionId,
-          startedAt: new Date(),
-          quizIds: selectedIds,
-          category: selectedCategory === "all" ? undefined : selectedCategory,
-          totalQuestions: selectedIds.length,
-        });
+      // セッションを作成
+      const sessionId = crypto.randomUUID();
+      await db.sessions.add({
+        id: sessionId,
+        startedAt: new Date(),
+        quizIds: selectedIds,
+        category: selectedCategory === "all" ? undefined : selectedCategory,
+        totalQuestions: selectedIds.length,
+      });
 
-        // セッションページに遷移
-        router.push(`/play/session?sessionId=${sessionId}`);
-      }
+      // セッションページに遷移
+      router.push(`/play/session?sessionId=${sessionId}`);
     } catch (error) {
       console.error("クイズ開始中にエラーが発生しました:", error);
       setError("クイズ開始中にエラーが発生しました");
-    } finally {
-      setIsStartingQuiz(false); // **処理終了時にフラグをfalseに**
     }
   };
 
@@ -269,114 +252,94 @@ export default function PlayPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>回答履歴</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col justify-between h-[calc(100%-80px)]">
-              <div className="text-center py-4">
-                <BookOpen className="h-12 w-12 mx-auto text-primary opacity-80 mb-4" />
-                <h3 className="text-lg font-medium mb-2">
-                  過去の回答履歴を確認
-                </h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                  これまでに回答したすべてのクイズの履歴を確認できます。
-                  カテゴリ別、日付別に絞り込んで表示することもできます。
-                </p>
+              <div className="flex justify-between items-center">
+                <CardTitle>学習統計</CardTitle>
+                {sessions && sessions.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsDeleteHistoryDialogOpen(true)}
+                    className="text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    履歴を削除
+                  </Button>
+                )}
               </div>
-              <Link href="/play/history" className="w-full">
-                <Button variant="outline" className="w-full">
-                  <History className="mr-2 h-4 w-4" />
-                  回答履歴を見る
-                </Button>
-              </Link>
+            </CardHeader>
+            <CardContent>
+              {stats ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                        <BarChart4 className="h-4 w-4" />
+                        <span>総クイズ数</span>
+                      </div>
+                      <p className="text-2xl font-bold">{stats.totalQuizzes}</p>
+                    </div>
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                        <Clock className="h-4 w-4" />
+                        <span>総セッション数</span>
+                      </div>
+                      <p className="text-2xl font-bold">
+                        {stats.totalSessions}
+                      </p>
+                    </div>
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span>正解数</span>
+                      </div>
+                      <p className="text-2xl font-bold">{stats.correctCount}</p>
+                    </div>
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                        <XCircle className="h-4 w-4 text-red-500" />
+                        <span>不正解数</span>
+                      </div>
+                      <p className="text-2xl font-bold">
+                        {stats.incorrectCount}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-muted/50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                      <span>正答率</span>
+                    </div>
+                    <div className="relative pt-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-semibold inline-block text-primary">
+                            {stats.accuracy.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="overflow-hidden h-2 text-xs flex rounded bg-primary/20">
+                        <div
+                          style={{ width: `${stats.accuracy}%` }}
+                          className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-[200px]">
+                    <QuizHistoryChart />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-[200px]">
+                  <p className="text-muted-foreground">
+                    データがありません。クイズに挑戦して統計を表示しましょう。
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
-
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>学習統計</CardTitle>
-              {(sessions ?? []).length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsDeleteHistoryDialogOpen(true)}
-                  className="text-destructive hover:bg-destructive/100"
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  履歴を削除
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {stats ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-muted/50 p-3 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                      <BarChart4 className="h-4 w-4" />
-                      <span>総クイズ数</span>
-                    </div>
-                    <p className="text-2xl font-bold">{stats.totalQuizzes}</p>
-                  </div>
-                  <div className="bg-muted/50 p-3 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                      <Clock className="h-4 w-4" />
-                      <span>総セッション数</span>
-                    </div>
-                    <p className="text-2xl font-bold">{stats.totalSessions}</p>
-                  </div>
-                  <div className="bg-muted/50 p-3 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span>正解数</span>
-                    </div>
-                    <p className="text-2xl font-bold">{stats.correctCount}</p>
-                  </div>
-                  <div className="bg-muted/50 p-3 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                      <XCircle className="h-4 w-4 text-red-500" />
-                      <span>不正解数</span>
-                    </div>
-                    <p className="text-2xl font-bold">{stats.incorrectCount}</p>
-                  </div>
-                </div>
-
-                <div className="bg-muted/50 p-3 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                    <span>正答率</span>
-                  </div>
-                  <div className="relative pt-1">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-semibold inline-block text-primary">
-                          {stats.accuracy.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="overflow-hidden h-2 text-xs flex rounded bg-primary/20">
-                      <div
-                        style={{ width: `${stats.accuracy}%` }}
-                        className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary"
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="h-[200px] overflow-hidden">
-                  <QuizHistoryChart />
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-[200px]">
-                <p className="text-muted-foreground">
-                  データがありません。クイズに挑戦して統計を表示しましょう。
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {sessions && sessions.length > 0 && (
           <div>

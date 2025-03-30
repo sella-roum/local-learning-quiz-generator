@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { db, type Quiz } from "@/lib/db";
-import { AlertCircle, Save } from "lucide-react";
+import { AlertCircle, Save, Check, ChevronsUpDown, Plus } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
 interface PageProps {
   params: {
@@ -48,6 +63,18 @@ export default function EditQuizPage({ params }: PageProps) {
     correctOptionIndex: 0,
     explanation: "",
   });
+  const [openCategorySelect, setOpenCategorySelect] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+  const [isNewCategory, setIsNewCategory] = useState(false);
+
+  // 既存のカテゴリを取得
+  const categories = useLiveQuery(async () => {
+    const quizzes = await db.quizzes.toArray();
+    const categorySet = new Set(
+      quizzes.map((quiz) => quiz.category).filter(Boolean)
+    );
+    return Array.from(categorySet);
+  }, []);
 
   // クイズIDからクイズ情報を取得
   useEffect(() => {
@@ -78,7 +105,7 @@ export default function EditQuizPage({ params }: PageProps) {
   }, [quizId]);
 
   // クイズを更新する関数
-  const handleUpdateQuiz = useCallback(async () => {
+  const handleUpdateQuiz = async () => {
     if (
       !quiz ||
       !editedQuiz.question ||
@@ -92,7 +119,7 @@ export default function EditQuizPage({ params }: PageProps) {
       setIsSaving(true);
 
       await db.quizzes.update(quizId, {
-        category: editedQuiz.category,
+        category: isNewCategory ? newCategory : editedQuiz.category,
         question: editedQuiz.question,
         options: editedQuiz.options,
         correctOptionIndex: editedQuiz.correctOptionIndex,
@@ -107,14 +134,20 @@ export default function EditQuizPage({ params }: PageProps) {
     } finally {
       setIsSaving(false);
     }
-  }, [quiz, editedQuiz]);
+  };
 
   // カテゴリを更新する関数
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditedQuiz({
-      ...editedQuiz,
-      category: e.target.value,
-    });
+  const handleCategoryChange = (category: string) => {
+    if (category === "新規カテゴリを作成") {
+      setIsNewCategory(true);
+    } else {
+      setEditedQuiz({
+        ...editedQuiz,
+        category,
+      });
+      setIsNewCategory(false);
+      setOpenCategorySelect(false);
+    }
   };
 
   // 問題文を更新する関数
@@ -157,7 +190,10 @@ export default function EditQuizPage({ params }: PageProps) {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-[50vh]">
-          <p>読み込み中...</p>
+          <div className="flex flex-col items-center">
+            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-4"></div>
+            <p className="text-muted-foreground">読み込み中...</p>
+          </div>
         </div>
       </MainLayout>
     );
@@ -187,14 +223,81 @@ export default function EditQuizPage({ params }: PageProps) {
             <CardContent>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="category">カテゴリ</Label>
-                  <Input
-                    id="category"
-                    value={editedQuiz.category}
-                    onChange={handleCategoryChange}
-                    placeholder="カテゴリを入力"
-                  />
+                  <Label>カテゴリ</Label>
+                  <div className="flex gap-2">
+                    <Popover
+                      open={openCategorySelect}
+                      onOpenChange={setOpenCategorySelect}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={openCategorySelect}
+                          className="w-full justify-between"
+                        >
+                          {isNewCategory
+                            ? "新規カテゴリを作成"
+                            : editedQuiz.category}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0">
+                        <Command>
+                          <CommandInput placeholder="カテゴリを検索..." />
+                          <CommandList>
+                            <CommandEmpty>
+                              カテゴリが見つかりません
+                            </CommandEmpty>
+                            <CommandGroup>
+                              {categories?.map((category) => (
+                                <CommandItem
+                                  key={category}
+                                  value={category}
+                                  onSelect={() =>
+                                    handleCategoryChange(category)
+                                  }
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      editedQuiz.category === category
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                  {category}
+                                </CommandItem>
+                              ))}
+                              <CommandItem
+                                value="新規カテゴリを作成"
+                                onSelect={() => {
+                                  handleCategoryChange("新規カテゴリを作成");
+                                  setOpenCategorySelect(false);
+                                }}
+                              >
+                                <Plus className="mr-2 h-4 w-4" />
+                                新規カテゴリを作成
+                              </CommandItem>
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
+
+                {isNewCategory && (
+                  <div className="space-y-2">
+                    <Label htmlFor="newCategory">新規カテゴリ名</Label>
+                    <Input
+                      id="newCategory"
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                      placeholder="新しいカテゴリ名を入力"
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="question">問題文</Label>

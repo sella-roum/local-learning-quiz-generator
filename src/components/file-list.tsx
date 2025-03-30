@@ -1,7 +1,6 @@
 "use client";
 
-import type { FileItem } from "@/lib/db";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -9,164 +8,206 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatFileSize, formatDate } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
+import { formatBytes, formatDate } from "@/lib/utils";
+import type { FileItem } from "@/lib/db";
 import {
   FileText,
   Image,
-  FileType,
+  FileArchive,
+  File,
   Trash2,
-  BookOpen,
   Info,
-  Calendar,
-  Tag,
+  PlusCircle,
+  CheckSquare,
 } from "lucide-react";
-import Link from "next/link";
 import { motion } from "framer-motion";
 
 interface FileListProps {
   files: FileItem[];
   onCreateQuiz: (fileId: number) => void;
   onDeleteFile: (fileId: number) => void;
+  onCreateMultiQuiz?: (fileIds: number[]) => void;
 }
 
-export function FileList({ files, onCreateQuiz, onDeleteFile }: FileListProps) {
-  // ファイルタイプに応じたアイコンとカラーを取得
-  const getFileIconAndColor = (fileType: string) => {
+export function FileList({
+  files,
+  onCreateQuiz,
+  onDeleteFile,
+  onCreateMultiQuiz,
+}: FileListProps) {
+  const [selectedFiles, setSelectedFiles] = useState<number[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+
+  // ファイルタイプに応じたアイコンを返す関数
+  const getFileIcon = (fileType: string) => {
     if (fileType.startsWith("text/")) {
-      return {
-        icon: <FileText className="h-8 w-8" />,
-        color: "text-blue-500",
-        bgColor: "bg-blue-100 dark:bg-blue-900/30",
-      };
+      return <FileText className="h-5 w-5 text-blue-500" />;
     } else if (fileType.startsWith("image/")) {
-      return {
-        icon: <Image className="h-8 w-8" />,
-        color: "text-purple-500",
-        bgColor: "bg-purple-100 dark:bg-purple-900/30",
-      };
+      return <Image className="h-5 w-5 text-green-500" />;
     } else if (fileType === "application/pdf") {
-      return {
-        icon: <FileType className="h-8 w-8" />,
-        color: "text-red-500",
-        bgColor: "bg-red-100 dark:bg-red-900/30",
-      };
+      return <FileArchive className="h-5 w-5 text-red-500" />;
     } else {
-      return {
-        icon: <FileType className="h-8 w-8" />,
-        color: "text-gray-500",
-        bgColor: "bg-gray-100 dark:bg-gray-800",
-      };
+      return <File className="h-5 w-5 text-gray-500" />;
+    }
+  };
+
+  // ファイル選択の切り替え
+  const toggleFileSelection = (fileId: number) => {
+    if (selectedFiles.includes(fileId)) {
+      setSelectedFiles(selectedFiles.filter((id) => id !== fileId));
+    } else {
+      setSelectedFiles([...selectedFiles, fileId]);
+    }
+  };
+
+  // 選択モードの切り替え
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    if (isSelectionMode) {
+      setSelectedFiles([]);
+    }
+  };
+
+  // 複数ファイルからクイズを作成
+  const handleCreateMultiQuiz = () => {
+    if (selectedFiles.length > 0 && onCreateMultiQuiz) {
+      onCreateMultiQuiz(selectedFiles);
     }
   };
 
   return (
-    // return 文を追加
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {files.map((file, index) => {
-        const { icon, color, bgColor } = getFileIconAndColor(file.type);
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={toggleSelectionMode}
+          className={isSelectionMode ? "bg-primary/20 text-primary" : ""}
+        >
+          <CheckSquare className="mr-2 h-4 w-4" />
+          {isSelectionMode ? "選択モード終了" : "複数選択"}
+        </Button>
 
-        return (
+        {isSelectionMode && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm">
+              {selectedFiles.length}個のファイルを選択中
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCreateMultiQuiz}
+              disabled={selectedFiles.length === 0}
+              className="bg-accent/100 hover:bg-primary/100 text-accent-foreground"
+            >
+              <PlusCircle className="mr-2 h-4 w-4" />
+              選択したファイルからクイズを作成
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {files.map((file) => (
           <motion.div
             key={file.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: index * 0.05 }}
+            transition={{ duration: 0.3 }}
           >
-            <Card className="file-card border-2 h-full">
-              <CardHeader className="file-card-header">
-                <div className="flex items-start gap-3">
-                  <div className={`rounded-lg p-2 ${bgColor}`}>{icon}</div>
-                  <div>
-                    <CardTitle className="file-card-title">
+            <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300 border-2">
+              <CardHeader className="bg-gradient-to-r from-muted/50 to-background p-4 pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    {isSelectionMode && (
+                      <Checkbox
+                        checked={selectedFiles.includes(file.id as number)}
+                        onCheckedChange={() =>
+                          toggleFileSelection(file.id as number)
+                        }
+                        className="mr-1"
+                      />
+                    )}
+                    {getFileIcon(file.type)}
+                    <CardTitle className="text-base truncate max-w-[200px]">
                       {file.name}
                     </CardTitle>
-                    <div className="flex items-center gap-1 mt-1">
-                      <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <p className="file-card-meta">
-                        {formatFileSize(file.size)} •{" "}
-                        {formatDate(file.uploadedAt)}
-                      </p>
-                    </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm">
-                    <div className="flex items-center gap-1 mb-1">
-                      <Tag className="h-3 w-3 text-primary" />
-                      <span className="font-medium">キーワード:</span>
-                    </div>
-                    <div className="file-card-keywords">
-                      {file.keywords && file.keywords.length > 0 ? (
-                        file.keywords.slice(0, 5).map((keyword, index) => (
+              <CardContent className="p-4 pt-3">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">サイズ:</span>
+                    <span>{formatBytes(file.size)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      アップロード日:
+                    </span>
+                    <span>{formatDate(file.uploadedAt)}</span>
+                  </div>
+                  {file.keywords && file.keywords.length > 0 && (
+                    <div>
+                      <span className="text-muted-foreground">キーワード:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {file.keywords.slice(0, 3).map((keyword, index) => (
                           <Badge
                             key={index}
-                            variant="secondary"
-                            className="animate-fade-in"
-                            style={{ animationDelay: `${index * 50}ms` }}
+                            variant="outline"
+                            className="text-xs"
                           >
                             {keyword}
                           </Badge>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground text-xs">
-                          キーワードがありません
-                        </span>
-                      )}
-                      {file.keywords && file.keywords.length > 5 && (
-                        <Badge variant="outline">
-                          +{file.keywords.length - 5}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  {file.summary && (
-                    <div className="text-sm">
-                      <span className="font-medium">概要:</span>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {file.summary}
-                      </p>
+                        ))}
+                        {file.keywords.length > 3 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{file.keywords.length - 3}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               </CardContent>
-              <CardFooter className="file-card-actions">
-                <div className="flex gap-2">
+              <CardFooter className="flex justify-between pt-4 border-t bg-muted/10">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onDeleteFile(file.id as number)}
+                  className="text-destructive hover:bg-destructive/100"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  削除
+                </Button>
+                <Link href={`/files/${file.id}`}>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => onDeleteFile(file.id as number)}
-                    className="text-destructive hover:bg-destructive/10"
+                    className="text-secondary hover:bg-secondary/100"
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    削除
+                    <Info className="h-4 w-4 mr-1" />
+                    詳細
                   </Button>
-                  <Link href={`/files/${file.id}`}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-secondary hover:bg-secondary/10"
-                    >
-                      <Info className="h-4 w-4 mr-1" />
-                      詳細
-                    </Button>
-                  </Link>
-                </div>
+                </Link>
                 <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => onCreateQuiz(file.id as number)}
-                  className="bg-primary hover:bg-primary/90"
+                  className="bg-primary/10 hover:bg-primary/100 text-primary"
                 >
-                  <BookOpen className="h-4 w-4 mr-1" />
-                  クイズを作成
+                  <PlusCircle className="h-4 w-4 mr-1" />
+                  クイズ作成
                 </Button>
               </CardFooter>
             </Card>
           </motion.div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
