@@ -116,7 +116,7 @@ export default function HomePage() {
         <div className="page-header animate-fade-in">
           <h2 className="page-title">学習クイズジェネレーター</h2>
           <p className="page-description">
-            あなたの学習資料からAIがクイズを作成し、効率的に学習をサポートします
+            学習資料からAIがクイズを作成し、効率的に学習をサポートします
           </p>
         </div>
 
