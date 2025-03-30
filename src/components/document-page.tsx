@@ -42,7 +42,7 @@ const DocumentPage: React.FC<DocumentPageProps> = ({ fileName }) => {
   }
 
   return (
-    <div className="mx-auto px-4 py-8">
+    <div className="mx-auto px-4 py-8 bg-white rounded-lg shadow-lg">
       <div className="container prose prose-sm max-w-none sm:prose lg:prose-lg xl:prose-xl">
         <ReactMarkdown>{markdownContent}</ReactMarkdown>
       </div>

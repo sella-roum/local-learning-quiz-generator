@@ -26,6 +26,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-md">
+        {/* Header content */}
         <div className="container flex h-16 items-center justify-between py-4">
           <div className="flex items-center gap-3">
             <div className="icon-container animate-bounce-light">
@@ -41,8 +42,8 @@ export function MainLayout({ children }: MainLayoutProps) {
         </div>
       </header>
       <div className="container flex-1 items-start md:grid md:grid-cols-[220px_1fr] md:gap-6 lg:grid-cols-[240px_1fr] lg:gap-10 py-6">
-        <aside className="fixed top-14 -ml-2 hidden w-full shrink-0 md:sticky md:block">
-          <nav className="h-full py-6 pr-6 lg:py-8 rounded-lg bg-primary/10">
+        <aside className="fixed top-16 -ml-2 hidden w-full shrink-0 md:sticky md:block md:max-h-[calc(100vh-4rem)] md:overflow-y-auto">
+          <nav className="py-6 pr-6 lg:py-8 rounded-lg bg-primary/10">
             <div className="space-y-2">
               {navItems.map((item) => {
                 const Icon = item.icon;
