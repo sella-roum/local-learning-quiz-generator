@@ -107,7 +107,7 @@ export default function HomePage() {
     <MainLayout>
       <div className="space-y-8">
         <div className="page-header animate-fade-in">
-          <h2 className="page-title">ローカル学習クイズジェネレーター</h2>
+          <h2 className="page-title">学習クイズジェネレーター</h2>
           <p className="page-description">
             あなたの学習資料からAIがクイズを作成し、効率的に学習をサポートします
           </p>
@@ -125,14 +125,6 @@ export default function HomePage() {
               <div className="text-3xl font-bold">{fileCount || 0}</div>
               <p className="text-sm text-muted-foreground">登録済みファイル</p>
             </CardContent>
-            <CardFooter>
-              <Link href="/files" className="w-full">
-                <Button variant="outline" className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  ファイル管理
-                </Button>
-              </Link>
-            </CardFooter>
           </Card>
 
           <Card className="card-hover">
@@ -146,14 +138,6 @@ export default function HomePage() {
               <div className="text-3xl font-bold">{quizCount || 0}</div>
               <p className="text-sm text-muted-foreground">作成済みクイズ</p>
             </CardContent>
-            <CardFooter>
-              <Link href="/quizzes" className="w-full">
-                <Button variant="outline" className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  クイズ管理
-                </Button>
-              </Link>
-            </CardFooter>
           </Card>
 
           <Card className="card-hover">
@@ -167,14 +151,6 @@ export default function HomePage() {
               <div className="text-3xl font-bold">{sessionCount || 0}</div>
               <p className="text-sm text-muted-foreground">学習セッション</p>
             </CardContent>
-            <CardFooter>
-              <Link href="/play" className="w-full">
-                <Button className="w-full">
-                  <Play className="h-4 w-4 mr-2" />
-                  クイズに挑戦
-                </Button>
-              </Link>
-            </CardFooter>
           </Card>
         </div>
 
@@ -285,28 +261,7 @@ export default function HomePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
           <Card className="card-hover">
             <CardHeader>
-              <CardTitle>クイック学習</CardTitle>
-              <CardDescription>すぐに学習を始めましょう</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p className="text-sm">
-                登録済みのクイズからランダムに出題します。
-                カテゴリ別の学習や、特定のファイルに関連するクイズに挑戦することもできます。
-              </p>
-            </CardContent>
-            <CardFooter>
-              <Link href="/play" className="w-full">
-                <Button className="w-full">
-                  <Play className="h-4 w-4 mr-2" />
-                  クイズに挑戦
-                </Button>
-              </Link>
-            </CardFooter>
-          </Card>
-
-          <Card className="card-hover">
-            <CardHeader>
-              <CardTitle>新しいクイズを作成</CardTitle>
+              <CardTitle>クイズを作成・管理</CardTitle>
               <CardDescription>学習資料からクイズを生成</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -325,7 +280,28 @@ export default function HomePage() {
               <Link href="/quizzes/create" className="flex-1">
                 <Button className="w-full">
                   <Plus className="h-4 w-4 mr-2" />
-                  クイズ作成
+                  クイズ一覧
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+
+          <Card className="card-hover">
+            <CardHeader>
+              <CardTitle>クイズに挑戦</CardTitle>
+              <CardDescription>すぐに学習を始めましょう</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-sm">
+                登録済みのクイズからランダムに出題します。
+                カテゴリ別の学習や、特定のファイルに関連するクイズに挑戦することもできます。
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link href="/play" className="w-full">
+                <Button className="w-full">
+                  <Play className="h-4 w-4 mr-2" />
+                  クイズに挑戦
                 </Button>
               </Link>
             </CardFooter>

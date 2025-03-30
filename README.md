@@ -1,4 +1,4 @@
-# Local Learning Quiz Generator (ローカル学習クイズジェネレーター)
+# Local Learning Quiz Generator (学習クイズジェネレーター)
 
 このプロジェクトは、Next.js で構築された Web アプリケーションで、ユーザーは PDF ファイルからクイズを生成できます。
 

@@ -8,8 +8,11 @@ import { ThemeProvider } from "@/components/theme-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ローカル学習クイズジェネレーター",
+  title: "学習クイズジェネレーター",
   description: "AIを活用して自分の資料から4択クイズを生成・学習できるアプリ",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

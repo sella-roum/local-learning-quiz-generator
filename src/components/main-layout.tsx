@@ -3,7 +3,7 @@
 import type React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Book, FileText, Home, Play, Sparkles } from "lucide-react";
+import { Book, FileText, Home, Play, Sparkles, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { motion } from "framer-motion";
@@ -20,6 +20,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     { href: "/files", label: "ファイル管理", icon: FileText },
     { href: "/quizzes", label: "クイズ一覧", icon: Book },
     { href: "/play", label: "クイズに挑戦", icon: Play },
+    { href: "/document", label: "操作説明", icon: Info },
   ];
 
   return (
@@ -31,7 +32,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               <Sparkles className="h-5 w-5" />
             </div>
             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              ローカル学習クイズジェネレーター
+              学習クイズジェネレーター
             </h1>
           </div>
           <div className="flex items-center gap-2">
