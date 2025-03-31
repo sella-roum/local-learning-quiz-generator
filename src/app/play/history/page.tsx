@@ -55,15 +55,31 @@ export default function HistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // セッション履歴を取得
+  // セッション履歴を取得 (完了したもののみ)
   const sessions = useLiveQuery(async () => {
-    const allSessions = await db.sessions
-      .orderBy("startedAt")
-      .reverse()
-      .toArray();
-    return allSessions.filter(
-      (session) => session.endedAt && session.startedAt
-    ); // 完了したセッションのみをフィルタリング
+    const sessionsData = await db.sessions
+      .where("endedAt")
+      .above(0)
+      .sortBy("startedAt");
+
+    // セッションごとに results を取得し、正解数(score)と全問題数(totalQuestions)を計算
+    const sessionsWithResults = await Promise.all(
+      sessionsData.map(async (session) => {
+        const sessionResults = await db.results
+          .where("sessionId")
+          .equals(session.id!)
+          .toArray();
+        // 正解数の計算
+        const score = sessionResults.reduce(
+          (total, result) => total + (result.isCorrect ? 1 : 0),
+          0
+        );
+        // 全問題数（回答結果の数）を計算
+        const totalQuestions = sessionResults.length;
+        return { ...session, results: sessionResults, score, totalQuestions };
+      })
+    );
+    return sessionsWithResults;
   });
 
   // カテゴリの一覧を取得
@@ -79,26 +95,31 @@ export default function HistoryPage() {
   const stats = useLiveQuery(async () => {
     const results = await db.results.toArray();
     const allSessions = await db.sessions.toArray();
+    // 完了したセッションのみをフィルタリング
     const completedSessions = allSessions.filter(
       (session) => session.endedAt && session.startedAt
-    ); // 完了したセッションのみをフィルタリング
-    const totalSessions = completedSessions.length; // 完了したセッション数を使用
+    );
+    const totalSessions = completedSessions.length;
 
-    // 完了したセッションの結果のみをフィルタリング
-    const completedSessionResults = results.filter((result) => {
-      return completedSessions.some(
-        (session) => session.id === result.sessionId
+    let correctCount = 0;
+    let incorrectCount = 0;
+    let totalQuestions = 0;
+
+    // 各セッションごとに回答結果を再計算
+    for (const session of completedSessions) {
+      const sessionResults = results.filter(
+        (result) => session.id === result.sessionId
       );
-    });
-
-    const correctCount = completedSessionResults.filter(
-      (r) => r.isCorrect
-    ).length;
-    const incorrectCount = completedSessionResults.length - correctCount;
+      const sessionScore = sessionResults.reduce(
+        (acc, result) => acc + (result.isCorrect ? 1 : 0),
+        0
+      );
+      correctCount += sessionScore;
+      incorrectCount += sessionResults.length - sessionScore;
+      totalQuestions += sessionResults.length;
+    }
     const accuracy =
-      completedSessionResults.length > 0
-        ? (correctCount / completedSessionResults.length) * 100
-        : 0;
+      totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0;
 
     // 日別の統計 (完了したセッションのみ対象)
     const sessionsByDate = new Map<
@@ -107,17 +128,23 @@ export default function HistoryPage() {
     >();
 
     for (const session of completedSessions) {
-      // 完了したセッションのみをループ処理
-      const dateStr = format(new Date(session.startedAt), "yyyy-MM-dd");
+      const sessionResults = results.filter(
+        (result) => session.id === result.sessionId
+      );
+      const sessionScore = sessionResults.reduce(
+        (acc, result) => acc + (result.isCorrect ? 1 : 0),
+        0
+      );
+      const sessionTotal = sessionResults.length;
 
+      const dateStr = format(new Date(session.startedAt), "yyyy-MM-dd");
       if (!sessionsByDate.has(dateStr)) {
         sessionsByDate.set(dateStr, { count: 0, score: 0, total: 0 });
       }
-
-      const stats = sessionsByDate.get(dateStr)!;
-      stats.count += 1;
-      stats.score += session.score || 0;
-      stats.total += session.totalQuestions || 0;
+      const dateStats = sessionsByDate.get(dateStr)!;
+      dateStats.count += 1;
+      dateStats.score += sessionScore;
+      dateStats.total += sessionTotal;
     }
 
     const dailyStats = Array.from(sessionsByDate.entries())
@@ -134,7 +161,7 @@ export default function HistoryPage() {
 
     return {
       totalSessions,
-      totalAnswered: completedSessionResults.length, // 完了したセッションの結果数を使用
+      totalAnswered: totalQuestions, // 完了したセッション全体の回答数
       correctCount,
       incorrectCount,
       accuracy,

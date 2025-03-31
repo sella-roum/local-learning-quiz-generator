@@ -46,6 +46,7 @@ export interface Session {
   category?: string; // カテゴリを追加
   score?: number;
   totalQuestions?: number;
+  results?: Result[]; // 追加: Session型に results プロパティを定義
 }
 
 // Dexieデータベースクラスの拡張

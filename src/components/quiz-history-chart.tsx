@@ -37,7 +37,26 @@ export function QuizHistoryChart() {
 
   // セッション履歴を取得 (完了したもののみ)
   const sessions = useLiveQuery(async () => {
-    return await db.sessions.where("endedAt").above(0).sortBy("startedAt"); // startedAtでソート
+    const sessionsData = await db.sessions
+      .where("endedAt")
+      .above(0)
+      .sortBy("startedAt");
+
+    // セッションごとに results を取得
+    const sessionsWithResults = await Promise.all(
+      sessionsData.map(async (session) => {
+        const sessionResults = await db.results
+          .where("sessionId")
+          .equals(session.id!)
+          .toArray();
+        session.score = sessionResults.reduce(
+          (total, result) => total + (result.isCorrect ? 1 : 0),
+          0
+        );
+        return { ...session, results: sessionResults }; // セッション情報に results を追加
+      })
+    );
+    return sessionsWithResults;
   });
 
   // グラフ用データを作成 (最新10件)
@@ -47,7 +66,12 @@ export function QuizHistoryChart() {
     const recentSessions = sessions.slice(-10); // 最新10件を取得
 
     return recentSessions.map((session, index) => {
-      const score = session.score || 0;
+      // **[START] results から正答数を計算**
+      const correctResults = session.results
+        ? session.results.filter((r) => r.isCorrect)
+        : [];
+      const score = correctResults.length;
+      // **[END] results から正答数を計算**
       const total = session.totalQuestions || 1; // 0除算を防ぐ
       const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
       return {
@@ -60,10 +84,6 @@ export function QuizHistoryChart() {
   // テーマに応じた色設定
   const primaryColor = useMemo(
     () => (isDark ? getColor("primary") : getColor("primary")),
-    [isDark]
-  );
-  const secondaryColor = useMemo(
-    () => (isDark ? getColor("secondary") : getColor("secondary")),
     [isDark]
   );
   const textColor = useMemo(

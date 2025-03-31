@@ -75,9 +75,19 @@ export default function PlayPage() {
       .orderBy("startedAt")
       .reverse()
       .toArray();
-    return allSessions.filter(
-      (session) => session.endedAt && session.startedAt
+
+    // セッションごとに results を取得
+    const sessionsWithResults = await Promise.all(
+      allSessions.map(async (session) => {
+        if (!session.endedAt || !session.startedAt) return null; // 完了したセッションのみ処理
+        const sessionResults = await db.results
+          .where("sessionId")
+          .equals(session.id!)
+          .toArray();
+        return { ...session, results: sessionResults }; // セッション情報に results を追加
+      })
     );
+    return sessionsWithResults.filter(Boolean) as Session[]; // nullを除外
   });
 
   // 結果の統計を取得
@@ -448,9 +458,13 @@ export default function PlayPage() {
                 className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
               >
                 {sessions.slice(0, 6).map((session, index) => {
-                  console.log({ session });
-                  const score = session.score || 0;
+                  // **[START] results から正答数を計算**
+                  const correctResults = session.results
+                    ? session.results.filter((r) => r.isCorrect)
+                    : [];
+                  const score = correctResults.length;
                   const total = session.totalQuestions || 0;
+                  // **[END] results から正答数を計算**
                   const percentage = total > 0 ? (score / total) * 100 : 0;
 
                   return (
