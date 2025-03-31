@@ -150,7 +150,6 @@ export async function POST(request: NextRequest) {
     }
 
     const result = response.response.text();
-    console.log({ result });
 
     // 結果からクイズ配列を抽出
     let quizzes = [];

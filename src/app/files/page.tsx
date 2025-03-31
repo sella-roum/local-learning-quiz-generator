@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/file-upload";
 import { FileList } from "@/components/file-list";
+import { UrlContentFetcher } from "@/components/url-content-fetcher";
 import { db, type FileItem } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { AlertCircle, Upload, FileUp, Trash2 } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle, Upload, FileUp, Trash2, Globe } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion } from "framer-motion";
 import {
   Dialog,
@@ -20,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function FilesPage() {
   const [error, setError] = useState<string | null>(null);
@@ -102,14 +104,34 @@ export default function FilesPage() {
           <CardHeader className="bg-gradient-to-r from-primary/10 to-secondary/10 p-2">
             <CardTitle className="flex items-center gap-2">
               <FileUp className="h-5 w-5 text-primary" />
-              ファイルのアップロード
+              コンテンツの追加
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <FileUpload
-              onUploadComplete={handleUploadComplete}
-              onError={(errorMsg) => setError(errorMsg)}
-            />
+            <Tabs defaultValue="file" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="file" className="flex items-center gap-2">
+                  <Upload className="h-4 w-4" />
+                  ファイルアップロード
+                </TabsTrigger>
+                <TabsTrigger value="url" className="flex items-center gap-2">
+                  <Globe className="h-4 w-4" />
+                  URLから取得
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="file">
+                <FileUpload
+                  onUploadComplete={handleUploadComplete}
+                  onError={(errorMsg) => setError(errorMsg)}
+                />
+              </TabsContent>
+              <TabsContent value="url">
+                <UrlContentFetcher
+                  onFetchComplete={handleUploadComplete}
+                  onError={(errorMsg: string) => setError(errorMsg)}
+                />
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
@@ -153,7 +175,7 @@ export default function FilesPage() {
                   <Upload className="h-8 w-8 text-primary" />
                 </div>
                 <p className="text-muted-foreground">
-                  アップロードされたファイルはありません。上記のフォームからファイルをアップロードしてください。
+                  アップロードされたファイルはありません。上記のフォームからファイルをアップロードするか、URLからコンテンツを取得してください。
                 </p>
               </div>
             </Card>
