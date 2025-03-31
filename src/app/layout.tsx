@@ -9,7 +9,8 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "学習クイズジェネレーター",
-  description: "AIを活用して自分の資料から4択クイズを生成・学習できるアプリ",
+  description:
+    "「読むだけじゃ覚えられない…」そんな悩みをAIが解決！テキスト/画像/PDFをアップするだけで、あなた専用の復習クイズを自動生成。スキマ時間に知識を脳に刻み込もう！",
   icons: {
     icon: "/favicon.svg",
     apple: "/favicon.svg",
