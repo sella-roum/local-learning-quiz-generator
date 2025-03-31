@@ -146,6 +146,8 @@ export default function CreateQuizPage() {
         fileObject,
         fileContent,
         file.keywords,
+        file.summary || "",
+        file.structure || "",
         {
           ...generationOptions,
           category:
@@ -365,6 +367,12 @@ export default function CreateQuizPage() {
                       <span className="font-semibold">ファイルタイプ:</span>{" "}
                       {file.type}
                     </div>
+                    {file.summary && (
+                      <div>
+                        <span className="font-semibold">概要:</span>{" "}
+                        <p className="text-sm">{file.summary}</p>
+                      </div>
+                    )}
                     <div>
                       <span className="font-semibold">キーワード:</span>{" "}
                       {file.keywords.map((keyword, index) => (
@@ -373,10 +381,10 @@ export default function CreateQuizPage() {
                         </Badge>
                       ))}
                     </div>
-                    {file.summary && (
+                    {file.structure && (
                       <div>
-                        <span className="font-semibold">概要:</span>{" "}
-                        <p className="text-sm">{file.summary}</p>
+                        <span className="font-semibold">構成:</span>{" "}
+                        <p className="text-sm">{file.structure}</p>
                       </div>
                     )}
                   </div>

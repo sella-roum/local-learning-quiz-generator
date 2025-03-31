@@ -31,14 +31,16 @@ export async function POST(request: NextRequest) {
     if (fileType.startsWith("text/") || fileType === "application/pdf") {
       // テキストまたはPDFの場合
       prompt = `
-        以下のテキストを分析して、以下の2つの情報を抽出してください。
+        以下のテキストを分析して、以下の3つの情報を抽出してください。
         1. 重要なキーワードを10〜15個。キーワードは単語または短いフレーズで、このテキストの主要な概念や用語を表すものにしてください。
         2. テキストの概要を100〜200文字程度で。
+        3. テキストの構成や章立て、主要なセクションなどの構造を200文字程度で説明してください。
 
         以下のJSON形式で返してください:
         {
           "keywords": ["キーワード1", "キーワード2", ...],
-          "summary": "テキストの概要..."
+          "summary": "テキストの概要...",
+          "structure": "テキストの構成や章立て、主要なセクションなどの構造の説明..."
         }
         
         テキスト:
@@ -47,14 +49,16 @@ export async function POST(request: NextRequest) {
     } else if (fileType.startsWith("image/")) {
       // 画像の場合
       prompt = `
-        この画像を分析して、以下の2つの情報を抽出してください。
+        この画像を分析して、以下の3つの情報を抽出してください。
         1. 重要なキーワードを5〜10個。キーワードは単語または短いフレーズで、この画像の主要な要素や概念を表すものにしてください。
         2. 画像の概要を100文字程度で。
+        3. 画像の構成要素や配置、視覚的な構造を100文字程度で説明してください。
 
         以下のJSON形式で返してください:
         {
           "keywords": ["キーワード1", "キーワード2", ...],
-          "summary": "画像の概要..."
+          "summary": "画像の概要...",
+          "structure": "画像の構成要素や配置、視覚的な構造の説明..."
         }
       `;
     }
@@ -89,6 +93,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           keywords: data.keywords || [],
           summary: data.summary || "",
+          structure: data.structure || "",
         });
       } else {
         // フォールバック: テキストから抽出を試みる
@@ -96,6 +101,7 @@ export async function POST(request: NextRequest) {
           .split("\n")
           .map((line) => line.trim())
           .filter(Boolean);
+
         const keywordsIndex = lines.findIndex(
           (line) =>
             line.includes("キーワード") ||
@@ -105,17 +111,27 @@ export async function POST(request: NextRequest) {
           (line) =>
             line.includes("概要") || line.toLowerCase().includes("summary")
         );
+        const structureIndex = lines.findIndex(
+          (line) =>
+            line.includes("構成") ||
+            line.includes("構造") ||
+            line.toLowerCase().includes("structure")
+        );
 
         let keywords: string[] = [];
         let summary = "";
+        let structure = "";
 
         if (keywordsIndex >= 0) {
+          const nextSectionIndex =
+            [summaryIndex, structureIndex]
+              .filter((idx) => idx > keywordsIndex)
+              .sort((a, b) => a - b)[0] || lines.length;
+
           const keywordsText = lines
-            .slice(
-              keywordsIndex + 1,
-              summaryIndex >= 0 ? summaryIndex : undefined
-            )
+            .slice(keywordsIndex + 1, nextSectionIndex)
             .join(" ");
+
           keywords = keywordsText
             .replace(/[[\]"']/g, "")
             .split(/[,、]/)
@@ -124,13 +140,22 @@ export async function POST(request: NextRequest) {
         }
 
         if (summaryIndex >= 0) {
+          const nextSectionIndex =
+            structureIndex > summaryIndex ? structureIndex : lines.length;
           summary = lines
-            .slice(summaryIndex + 1)
+            .slice(summaryIndex + 1, nextSectionIndex)
             .join(" ")
             .trim();
         }
 
-        return NextResponse.json({ keywords, summary });
+        if (structureIndex >= 0) {
+          structure = lines
+            .slice(structureIndex + 1)
+            .join(" ")
+            .trim();
+        }
+
+        return NextResponse.json({ keywords, summary, structure });
       }
     } catch (error) {
       console.error("結果の解析に失敗しました:", error);
@@ -139,6 +164,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         keywords: [],
         summary: "解析に失敗しました。",
+        structure: "",
       });
     }
   } catch (error) {

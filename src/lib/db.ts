@@ -10,6 +10,7 @@ export interface FileItem {
   extractedText?: string;
   keywords: string[];
   summary?: string; // 概要を追加
+  structure?: string; // 追加: ファイルの内容の構成
   uploadedAt: Date;
 }
 

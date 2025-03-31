@@ -3,7 +3,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(request: NextRequest) {
   try {
-    const { fileContent, fileType, keywords, options } = await request.json();
+    const { fileContent, fileType, keywords, summary, structure, options } =
+      await request.json();
 
     if (!fileContent) {
       return NextResponse.json(
@@ -37,86 +38,96 @@ export async function POST(request: NextRequest) {
     if (fileType.startsWith("text/") || fileType === "application/pdf") {
       // テキストまたはPDFの場合
       prompt = `
-        以下のテキストと関連キーワードに基づいて、${count}個の4択クイズを作成してください。
-        難易度は${
-          difficulty === "easy"
-            ? "簡単"
-            : difficulty === "medium"
-            ? "普通"
-            : "難しい"
-        }にしてください。
-        カテゴリは「${category}」です。
-        
-        各クイズは以下の形式のJSONオブジェクトとして返してください:
+      以下のテキストと関連情報に基づいて、${count}個の4択クイズを作成してください。
+      難易度は${
+        difficulty === "easy"
+          ? "簡単"
+          : difficulty === "medium"
+          ? "普通"
+          : "難しい"
+      }にしてください。
+      カテゴリは「${category}」です。
+      
+      各クイズは以下の形式のJSONオブジェクトとして返してください:
+      {
+        "category": "カテゴリ名",
+        "question": "問題文",
+        "options": ["選択肢A", "選択肢B", "選択肢C", "選択肢D"],
+        "correctOptionIndex": 0, // 0から3の整数で、正解の選択肢のインデックス
+        "explanation": "この問題の解説文。なぜこの答えが正解なのかを説明する"
+      }
+      
+      全てのクイズをJSON配列として返してください。例:
+      [
         {
           "category": "カテゴリ名",
-          "question": "問題文",
+          "question": "問題文1",
           "options": ["選択肢A", "選択肢B", "選択肢C", "選択肢D"],
-          "correctOptionIndex": 0, // 0から3の整数で、正解の選択肢のインデックス
-          "explanation": "この問題の解説文。なぜこの答えが正解なのかを説明する"
-        }
-        
-        全てのクイズをJSON配列として返してください。例:
-        [
-          {
-            "category": "カテゴリ名",
-            "question": "問題文1",
-            "options": ["選択肢A", "選択肢B", "選択肢C", "選択肢D"],
-            "correctOptionIndex": 0,
-            "explanation": "解説文1"
-          },
-          ...
-        ]
-        
-        ${customPrompt ? `追加の指示: ${customPrompt}` : ""}
-        
-        テキスト:
-        ${fileContent}
-        
-        関連キーワード:
-        ${keywords ? keywords.join(", ") : ""}
-      `;
+          "correctOptionIndex": 0,
+          "explanation": "解説文1"
+        },
+        ...
+      ]
+      
+      ${customPrompt ? `追加の指示: ${customPrompt}` : ""}
+      
+      テキスト:
+      ${fileContent}
+      
+      テキストの概要:
+      ${summary || ""}
+      
+      テキストの構成:
+      ${structure || ""}
+      
+      関連キーワード:
+      ${keywords ? keywords.join(", ") : ""}
+    `;
     } else if (fileType.startsWith("image/")) {
-      // 画像の場合
+      // 画像の場合も同様に修正
       prompt = `
-        この画像に基づいて、${count}個の4択クイズを作成してください。
-        難易度は${
-          difficulty === "easy"
-            ? "簡単"
-            : difficulty === "medium"
-            ? "普通"
-            : "難しい"
-        }にしてください。
-        カテゴリは「${category}」です。
-        
-        各クイズは以下の形式のJSONオブジェクトとして返してください:
+      この画像に基づいて、${count}個の4択クイズを作成してください。
+      難易度は${
+        difficulty === "easy"
+          ? "簡単"
+          : difficulty === "medium"
+          ? "普通"
+          : "難しい"
+      }にしてください。
+      カテゴリは「${category}」です。
+      
+      各クイズは以下の形式のJSONオブジェクトとして返してください:
+      {
+        "category": "カテゴリ名",
+        "question": "問題文",
+        "options": ["選択肢A", "選択肢B", "選択肢C", "選択肢D"],
+        "correctOptionIndex": 0, // 0から3の整数で、正解の選択肢のインデックス
+        "explanation": "この問題の解説文。なぜこの答えが正解なのかを説明する"
+      }
+      
+      全てのクイズをJSON配列として返してください。例:
+      [
         {
           "category": "カテゴリ名",
-          "question": "問題文",
+          "question": "問題文1",
           "options": ["選択肢A", "選択肢B", "選択肢C", "選択肢D"],
-          "correctOptionIndex": 0, // 0から3の整数で、正解の選択肢のインデックス
-          "  "選択肢B", "選択肢C", "選択肢D"],
-          "correctOptionIndex": 0, // 0から3の整数で、正解の選択肢のインデックス
-          "explanation": "この問題の解説文。なぜこの答えが正解なのかを説明する"
-        }
-        
-        全てのクイズをJSON配列として返してください。例:
-        [
-          {
-            "category": "カテゴリ名",
-            "question": "問題文1",
-            "options": ["選択肢A", "選択肢B", "選択肢C", "選択肢D"],
-            "correctOptionIndex": 0,
-            "explanation": "解説文1"
-          },
-          ...
-        ]
-        
-        ${customPrompt ? `追加の指示: ${customPrompt}` : ""}
-        
-        関連キーワード:
-        ${keywords ? keywords.join(", ") : ""}
-      `;
+          "correctOptionIndex": 0,
+          "explanation": "解説文1"
+        },
+        ...
+      ]
+      
+      ${customPrompt ? `追加の指示: ${customPrompt}` : ""}
+      
+      画像の概要:
+      ${summary || ""}
+      
+      画像の構成:
+      ${structure || ""}
+      
+      関連キーワード:
+      ${keywords ? keywords.join(", ") : ""}
+    `;
     }
 
     // Gemini APIを呼び出す
@@ -139,6 +150,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = response.response.text();
+    console.log({ result });
 
     // 結果からクイズ配列を抽出
     let quizzes = [];

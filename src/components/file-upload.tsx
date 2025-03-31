@@ -79,10 +79,8 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
         setProgress(40);
 
         // キーワードと概要抽出APIを呼び出す
-        const { keywords, summary } = await extractKeywordsAndSummary(
-          file,
-          fileContent
-        );
+        const { keywords, summary, structure } =
+          await extractKeywordsAndSummary(file, fileContent);
 
         setProgress(80);
 
@@ -95,6 +93,7 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
           extractedText,
           keywords,
           summary,
+          structure, // 構成情報を追加
           uploadedAt: new Date(),
         };
 

@@ -130,7 +130,9 @@ export default function FileDetailPage({ params }: PageProps) {
                 <div className="flex items-start gap-4">
                   {getFileIcon(file.type)}
                   <div>
-                    <CardTitle className="text-xl">{file.name}</CardTitle>
+                    <CardTitle className="text-xl whitespace-pre-wrap">
+                      {file.name}
+                    </CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
                       {formatFileSize(file.size)} •{" "}
                       {formatDate(file.uploadedAt)}
@@ -145,7 +147,9 @@ export default function FileDetailPage({ params }: PageProps) {
                 {file.summary && (
                   <div>
                     <h3 className="text-lg font-semibold mb-2">概要</h3>
-                    <p className="text-sm">{file.summary}</p>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {file.summary}
+                    </p>
                   </div>
                 )}
 
@@ -159,6 +163,15 @@ export default function FileDetailPage({ params }: PageProps) {
                         </Badge>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {file.structure && (
+                  <div className="mt-4">
+                    <h3 className="text-lg font-semibold mb-2">構成</h3>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {file.structure}
+                    </p>
                   </div>
                 )}
 

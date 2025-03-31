@@ -158,6 +158,8 @@ export default function CreateMultiQuizPage() {
           fileObject,
           fileContent,
           file.keywords,
+          file.summary || "",
+          file.structure || "",
           {
             ...generationOptions,
             // 各ファイルから生成する問題数を調整

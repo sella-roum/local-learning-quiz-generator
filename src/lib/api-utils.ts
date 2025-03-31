@@ -33,6 +33,8 @@ interface GenerateQuizRequestBody {
   };
   fileContent?: string;
   fileType?: string;
+  summary?: string;
+  structure?: string;
 }
 
 interface ExtractKeywordsRequestBody {
@@ -43,7 +45,7 @@ interface ExtractKeywordsRequestBody {
 export async function extractKeywordsAndSummary(
   file: File,
   fileContent: string | ArrayBuffer
-): Promise<{ keywords: string[]; summary: string }> {
+): Promise<{ keywords: string[]; summary: string; structure: string }> {
   try {
     const formData = new FormData();
     formData.append("file", file);
@@ -89,6 +91,7 @@ export async function extractKeywordsAndSummary(
     return {
       keywords: data.keywords || [],
       summary: data.summary || "",
+      structure: data.structure || "",
     };
   } catch (error) {
     console.error("キーワードと概要の抽出中にエラーが発生しました:", error);
@@ -101,12 +104,16 @@ export async function generateQuizzes(
   file: File,
   fileContent: string | ArrayBuffer,
   keywords: string[],
+  summary: string,
+  structure: string,
   options?: GenerateQuizOptions
 ): Promise<GenerateQuiz[]> {
   try {
     // ファイルタイプに応じてリクエストボディを作成
     const requestBody: GenerateQuizRequestBody = {
       keywords,
+      summary,
+      structure,
       options: {
         count: options?.count || 5,
         difficulty: options?.difficulty || "medium",
