@@ -189,7 +189,7 @@ export default function ResultsPage() {
                 <div className="relative w-36 h-36">
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
-                      <p className="text-5xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                      <p className="text-5xl font-bold bg-gradient-to-r from-green-500 to-lime-200 bg-clip-text text-transparent">
                         {percentage}%
                       </p>
                       <p className="text-sm text-muted-foreground mt-1">
@@ -260,7 +260,7 @@ export default function ResultsPage() {
 
               {session?.category && (
                 <div className="flex items-center justify-center">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-accent/20 text-accent-foreground">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-accent/100 text-accent-foreground">
                     <BarChart4 className="h-4 w-4 mr-1" />
                     カテゴリ: {session.category}
                   </span>
