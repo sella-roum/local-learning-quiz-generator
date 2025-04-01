@@ -110,7 +110,7 @@ export function UrlContentFetcher({
       // 入力フィールドをリセット
       setUrl("");
 
-      // 完了時にファイル情報を渡す
+      // 完了時にファイル情報を渡��
       onFetchComplete(fileItem);
     } catch (error) {
       console.error("Webページの取得中にエラーが発生しました:", error);

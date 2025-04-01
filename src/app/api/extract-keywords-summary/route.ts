@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
     // プロンプトを作成
     let prompt = "";
 
-    if (fileType.startsWith("text/") || fileType === "application/pdf") {
-      // テキストまたはPDFの場合
+    if (fileType.startsWith("text/")) {
+      // テキストの場合
       prompt = `
         以下のテキストを分析して、以下の3つの情報を抽出してください。
         1. 重要なキーワードを10〜15個。キーワードは単語または短いフレーズで、このテキストの主要な概念や用語を表すものにしてください。
@@ -45,6 +45,21 @@ export async function POST(request: NextRequest) {
         
         テキスト:
         ${fileContent}
+      `;
+    } else if (fileType === "application/pdf") {
+      // PDFの場合
+      prompt = `
+        このPDFを分析して、以下の3つの情報を抽出してください。
+        1. 重要なキーワードを10〜15個。キーワードは単語または短いフレーズで、このPDFの主要な概念や用語を表すものにしてください。
+        2. PDFの概要を100〜200文字程度で。
+        3. PDFの構成や章立て、主要なセクションなどの構造を200文字程度で説明してください。
+
+        以下のJSON形式で返してください:
+        {
+          "keywords": ["キーワード1", "キーワード2", ...],
+          "summary": "PDFの概要...",
+          "structure": "PDFの構成や章立て、主要なセクションなどの構造の説明..."
+        }
       `;
     } else if (fileType.startsWith("image/")) {
       // 画像の場合
@@ -66,8 +81,8 @@ export async function POST(request: NextRequest) {
     // Gemini APIを呼び出す
     let response;
 
-    if (fileType.startsWith("image/")) {
-      // 画像の場合
+    if (fileType.startsWith("image/") || fileType === "application/pdf") {
+      // 画像またはPDFの場合
       response = await model.generateContent([
         prompt,
         {

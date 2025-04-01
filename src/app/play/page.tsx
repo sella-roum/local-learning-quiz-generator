@@ -164,7 +164,7 @@ export default function PlayPage() {
 
       if (filteredQuizIds.length < quizCount) {
         setError(
-          `選択されたカテゴリには${filteredQuizIds.length}問しかありません。問題数を減らすか、別のカテゴリを選択してください。`
+          `選択されたカテゴリには${filteredQuizIds.length}問しかありません。問題数を減ら��か、別のカテゴリを選択してください。`
         );
         setIsStartingQuiz(false);
         return;

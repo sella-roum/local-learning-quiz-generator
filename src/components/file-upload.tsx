@@ -60,11 +60,20 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
         let extractedText: string | undefined;
         let fileContent: string | ArrayBuffer;
 
-        // PDFファイルの場合はテキスト抽出
+        // PDFファイルの場合はテキスト抽出とArrayBuffer読み込みを並行して行う
         if (file.type === "application/pdf") {
           setProgress(20);
-          extractedText = await extractTextFromPDF(file);
-          fileContent = extractedText;
+
+          // PDFファイルそのものをArrayBufferとして読み込む
+          fileContent = await readFileAsArrayBuffer(file);
+
+          try {
+            // PDFからテキストを抽出（エラーが発生しても続行）
+            extractedText = await extractTextFromPDF(file);
+          } catch (pdfError) {
+            console.error("PDFテキスト抽出エラー:", pdfError);
+            extractedText = "PDFからのテキスト抽出に失敗しました";
+          }
         } else if (file.type.startsWith("text/")) {
           // テキストファイルの場合は内容を読み込む
           fileContent = await readFileAsText(file);

@@ -6,9 +6,9 @@ export async function POST(request: NextRequest) {
     const { fileContent, fileType, keywords, summary, structure, options } =
       await request.json();
 
-    if (!fileContent) {
+    if (!fileContent && !summary) {
       return NextResponse.json(
-        { error: "ファイル内容が提供されていません" },
+        { error: "ファイル内容または概要が提供されていません" },
         { status: 400 }
       );
     }
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       ${customPrompt ? `追加の指示: ${customPrompt}` : ""}
       
       テキスト:
-      ${fileContent}
+      ${fileContent || "テキストは提供されていません。"}
       
       テキストの概要:
       ${summary || ""}
@@ -133,17 +133,23 @@ export async function POST(request: NextRequest) {
     // Gemini APIを呼び出す
     let response;
 
-    if (fileType.startsWith("image/")) {
-      // 画像の場合
-      response = await model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            mimeType: fileType,
-            data: fileContent,
+    if (fileType.startsWith("image/") || fileType === "application/pdf") {
+      // 画像またはPDFの場合
+      try {
+        response = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              mimeType: fileType,
+              data: fileContent,
+            },
           },
-        },
-      ]);
+        ]);
+      } catch (error) {
+        console.error("Gemini API呼び出しエラー:", error);
+        // 画像/PDF処理に失敗した場合はテキストのみで再試行
+        response = await model.generateContent(prompt);
+      }
     } else {
       // テキストの場合
       response = await model.generateContent(prompt);
@@ -158,6 +164,14 @@ export async function POST(request: NextRequest) {
       const jsonMatch = result.match(/\[.*\]/s);
       if (jsonMatch) {
         quizzes = JSON.parse(jsonMatch[0]);
+      } else {
+        // JSONが見つからない場合は、テキスト全体をJSONとして解析を試みる
+        try {
+          quizzes = JSON.parse(result);
+        } catch (innerError) {
+          console.error("JSONパース失敗:", innerError);
+          throw new Error("クイズ生成結果のJSONパースに失敗しました");
+        }
       }
     } catch (error) {
       console.error("クイズ生成結果の解析に失敗しました:", error);

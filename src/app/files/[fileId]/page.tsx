@@ -33,6 +33,7 @@ export default function FileDetailPage({ params }: PageProps) {
   const [file, setFile] = useState<FileItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   // ファイルIDからファイル情報を取得
   useEffect(() => {
@@ -41,6 +42,12 @@ export default function FileDetailPage({ params }: PageProps) {
         const fileData = await db.files.get(fileId);
         if (fileData) {
           setFile(fileData);
+
+          // PDFファイルの場合はURLを生成
+          if (fileData.type === "application/pdf") {
+            const url = URL.createObjectURL(fileData.blob);
+            setPdfUrl(url);
+          }
         } else {
           setError("指定されたファイルが見つかりませんでした");
         }
@@ -53,6 +60,13 @@ export default function FileDetailPage({ params }: PageProps) {
     };
 
     fetchFile();
+
+    // クリーンアップ関数
+    return () => {
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+      }
+    };
   }, [fileId]);
 
   // ファイルをダウンロードする関数
@@ -185,6 +199,26 @@ export default function FileDetailPage({ params }: PageProps) {
                         }
                         alt={file.name}
                         className="max-w-full h-auto"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {file.type === "application/pdf" && pdfUrl && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      PDFプレビュー
+                    </h3>
+                    <div
+                      className="border rounded-md overflow-hidden"
+                      style={{ height: "600px" }}
+                    >
+                      <embed
+                        src={pdfUrl}
+                        type="application/pdf"
+                        width="100%"
+                        height="100%"
+                        className="w-full h-full"
                       />
                     </div>
                   </div>

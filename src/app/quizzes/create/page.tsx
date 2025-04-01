@@ -130,18 +130,25 @@ export default function CreateQuizPage() {
     setQuizzesToSave([]);
 
     try {
+      // クイズを生成
+      const fileObject = new File([file.blob], file.name, { type: file.type });
+
       // ファイルの内容を取得
       let fileContent: string | ArrayBuffer;
 
-      if (file.type.startsWith("text/") || file.type === "application/pdf") {
+      if (file.type === "application/pdf") {
+        // PDFファイルの場合は、テキスト抽出内容があればそれを使用し、なければファイル自体を使用
         fileContent = file.extractedText || "";
-      } else {
+      } else if (file.type.startsWith("text/")) {
+        // テキストファイルの場合
+        fileContent = file.extractedText || "";
+      } else if (file.type.startsWith("image/")) {
         // 画像ファイルの場合はBlobからArrayBufferを取得
         fileContent = await file.blob.arrayBuffer();
+      } else {
+        throw new Error("サポートされていないファイル形式です");
       }
 
-      // クイズを生成
-      const fileObject = new File([file.blob], file.name, { type: file.type });
       const quizzes = await generateQuizzes(
         fileObject,
         fileContent,
