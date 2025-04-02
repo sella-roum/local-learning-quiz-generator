@@ -5,7 +5,7 @@ import { useState, useRef, forwardRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { db, type FileItem } from "@/lib/db";
-import { extractTextFromPDF } from "@/lib/pdf-utils";
+// import { extractTextFromPDF } from "@/lib/pdf-utils";
 import { extractKeywordsAndSummary } from "@/lib/api-utils";
 import { Loader2, Upload, FileText, Image, FileType } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,8 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
 
           try {
             // PDFからテキストを抽出（エラーが発生しても続行）
-            extractedText = await extractTextFromPDF(file);
+            // エラーが発生するため、空の文字列を返す
+            extractedText = ""; // await extractTextFromPDF(file);
           } catch (pdfError) {
             console.error("PDFテキスト抽出エラー:", pdfError);
             extractedText = "PDFからのテキスト抽出に失敗しました";
