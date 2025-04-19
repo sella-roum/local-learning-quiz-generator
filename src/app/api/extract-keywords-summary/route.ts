@@ -5,6 +5,8 @@ import {
   Content,
   Part,
   GenerateContentConfig,
+  Schema,
+  Type,
   // HarmCategory, // 必要ならインポート
   // HarmBlockThreshold, // 必要ならインポート
 } from "@google/genai";
@@ -46,6 +48,32 @@ export async function POST(request: NextRequest) {
       "gemini-2.0-flash", // フォールバックモデル
       // 必要に応じてさらに追加可能 (例: "gemini-1.5-flash-latest")
     ];
+    const thinkingModelIds = ["gemini-2.5-flash-preview-04-17"];
+
+    // --- responseSchema の定義 ---
+    const analysisResponseSchema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        keywords: {
+          type: Type.ARRAY,
+          description:
+            "抽出された重要なキーワード（単語または短いフレーズ）のリスト。",
+          items: {
+            type: Type.STRING,
+          },
+        },
+        summary: {
+          type: Type.STRING,
+          description: "テキストまたは画像の概要（指定された文字数程度）。",
+        },
+        structure: {
+          type: Type.STRING,
+          description:
+            "テキストの構成や章立て、または画像の構成要素や配置などの構造に関する詳細な説明。",
+        },
+      },
+      required: ["keywords", "summary", "structure"], // すべて必須とする
+    };
 
     // プロンプトとコンテンツパーツの準備
     let prompt = "";
@@ -121,20 +149,6 @@ export async function POST(request: NextRequest) {
 
     requestContents.push({ role: "user", parts });
 
-    // 生成設定 - JSON出力を期待
-    const generationConfig: GenerateContentConfig = {
-      responseMimeType: "application/json",
-      // thinkingConfig はモデルによってサポート状況が異なるためコメントアウト
-      // thinkingConfig: {
-      //   thinkingBudget: 24576,
-      // },
-      // 必要に応じて他の設定を追加
-      // temperature: 0.7,
-      // safetySettings: [
-      //   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      // ],
-    };
-
     // --- API呼び出しとリトライ処理 ---
     let response: GenerateContentResponse | null = null;
     let lastError: any = null;
@@ -142,6 +156,18 @@ export async function POST(request: NextRequest) {
     for (const modelId of modelIdsToTry) {
       console.log(`モデル ${modelId} でAPI呼び出しを試行します...`);
       try {
+        // 生成設定 - JSON出力を期待
+        const generationConfig: GenerateContentConfig = {
+          responseMimeType: "application/json",
+          responseSchema: analysisResponseSchema,
+        };
+        // thinkingモデルであれば、思考トークンを付与
+        if (thinkingModelIds.includes(modelId)) {
+          // generationConfig.thinkingConfig = {
+          //   thinkingBudget: 24576,
+          // };
+        }
+
         const currentResponse = await ai.models.generateContent({
           model: modelId,
           contents: requestContents,

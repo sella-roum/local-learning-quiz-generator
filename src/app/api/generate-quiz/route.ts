@@ -5,6 +5,8 @@ import {
   Content,
   Part,
   GenerateContentConfig,
+  Schema,
+  Type,
   // HarmCategory, // 必要ならインポート
   // HarmBlockThreshold, // 必要ならインポート
 } from "@google/genai";
@@ -67,6 +69,45 @@ export async function POST(request: NextRequest) {
       "gemini-2.0-flash", // フォールバックモデル
       // 必要に応じてさらに追加可能 (例: "gemini-1.5-flash-latest")
     ];
+    const thinkingModelIds = ["gemini-2.5-flash-preview-04-17"];
+
+    // --- responseSchema の定義 (クイズ配列用) ---
+    const quizSchema: Schema = {
+      type: Type.OBJECT,
+      properties: {
+        category: { type: Type.STRING, description: "クイズのカテゴリ名" },
+        question: { type: Type.STRING, description: "クイズの問題文" },
+        options: {
+          type: Type.ARRAY,
+          description: "4つの選択肢の文字列配列",
+          items: { type: Type.STRING },
+          minItems: "4", // 選択肢は4つ
+          maxItems: "4",
+        },
+        correctOptionIndex: {
+          type: Type.INTEGER,
+          description: "正解の選択肢のインデックス (0-3)",
+          minimum: 0,
+          maximum: 3,
+        },
+        explanation: { type: Type.STRING, description: "問題の解説文" },
+      },
+      required: [
+        "category",
+        "question",
+        "options",
+        "correctOptionIndex",
+        "explanation",
+      ],
+    };
+
+    const quizResponseSchema: Schema = {
+      type: Type.ARRAY,
+      description: `生成された${count}個のクイズオブジェクトの配列`,
+      items: quizSchema,
+      minItems: String(count), // 指定された数のクイズを要求
+      maxItems: String(count),
+    };
 
     // JSON形式の指示
     const jsonFormatString = "```json ```"; // プロンプト内で使用
@@ -185,18 +226,6 @@ ${keywords ? keywords.join(", ") : ""}
 
     const requestContents: Content[] = [{ role: "user", parts }];
 
-    // 生成設定 - JSON出力を期待
-    const generationConfig: GenerateContentConfig = {
-      responseMimeType: "application/json",
-      // thinkingConfig はモデルによってサポート状況が異なるためコメントアウト
-      // thinkingConfig: {
-      //   thinkingBudget: 24576,
-      // },
-      // 必要に応じて他の設定を追加
-      // temperature: 0.7,
-      // safetySettings: [...]
-    };
-
     // --- API呼び出しとリトライ処理 ---
     let response: GenerateContentResponse | null = null;
     let lastError: any = null;
@@ -204,6 +233,18 @@ ${keywords ? keywords.join(", ") : ""}
     for (const modelId of modelIdsToTry) {
       console.log(`モデル ${modelId} でAPI呼び出しを試行します...`);
       try {
+        // 生成設定 - JSON出力を期待
+        const generationConfig: GenerateContentConfig = {
+          responseMimeType: "application/json",
+          responseSchema: quizResponseSchema,
+        };
+        // thinkingモデルであれば、思考トークンを付与
+        if (thinkingModelIds.includes(modelId)) {
+          // generationConfig.thinkingConfig = {
+          //   thinkingBudget: 24576,
+          // };
+        }
+
         const currentResponse = await ai.models.generateContent({
           model: modelId,
           contents: requestContents,

@@ -5,6 +5,8 @@ import {
   Content,
   Part,
   GenerateContentConfig,
+  Schema,
+  Type,
   // HarmCategory,
   // HarmBlockThreshold,
 } from "@google/genai";
@@ -54,6 +56,18 @@ export async function POST(request: NextRequest) {
       "gemini-2.0-flash", // フォールバックモデル
       // 必要に応じてさらに追加可能 (例: "gemini-1.5-flash-latest")
     ];
+    const thinkingModelIds = ["gemini-2.5-flash-preview-04-17"];
+
+    // --- responseSchema の定義 (キーワード配列用) ---
+    const keywordsResponseSchema: Schema = {
+      type: Type.ARRAY,
+      description:
+        "抽出された重要なキーワード（単語または短いフレーズ）の文字列配列。",
+      items: {
+        type: Type.STRING,
+        description: "個々のキーワード文字列",
+      },
+    };
 
     // プロンプトを作成
     let prompt = "";
@@ -105,14 +119,6 @@ export async function POST(request: NextRequest) {
 
     requestContents.push({ role: "user", parts });
 
-    // 生成設定 - JSON出力を期待
-    const generationConfig: GenerateContentConfig = {
-      responseMimeType: "application/json",
-      // thinkingConfig: { // thinkingConfig はモデルによってサポート状況が異なるため、一旦コメントアウト
-      //   thinkingBudget: 24576,
-      // },
-    };
-
     // --- API呼び出しとリトライ処理 ---
     let response: GenerateContentResponse | null = null;
     let lastError: any = null; // 最後に発生したエラーを保持
@@ -120,6 +126,18 @@ export async function POST(request: NextRequest) {
     for (const modelId of modelIdsToTry) {
       console.log(`モデル ${modelId} でAPI呼び出しを試行します...`);
       try {
+        // 生成設定 - JSON出力を期待
+        const generationConfig: GenerateContentConfig = {
+          responseMimeType: "application/json",
+          responseSchema: keywordsResponseSchema,
+        };
+        // thinkingモデルであれば、思考トークンを付与
+        if (thinkingModelIds.includes(modelId)) {
+          // generationConfig.thinkingConfig = {
+          //   thinkingBudget: 24576,
+          // };
+        }
+
         const currentResponse = await ai.models.generateContent({
           model: modelId,
           contents: requestContents,
