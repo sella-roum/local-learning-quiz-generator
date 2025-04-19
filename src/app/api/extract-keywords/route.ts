@@ -7,135 +7,123 @@ import {
   GenerateContentConfig,
   Schema,
   Type,
-  // HarmCategory,
-  // HarmBlockThreshold,
 } from "@google/genai";
 
-// クイズの型定義 (レスポンスの検証用) - このコードでは使用しないが、前の例から残す
-// interface Quiz {
-//   category: string;
-//   question: string;
-//   options: string[];
-//   correctOptionIndex: number;
-//   explanation: string;
-// }
+// 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
+const allowedOrigin = process.env.FRONTEND_URL;
 
+// CORSヘッダーを設定するヘルパー関数
+function setCorsHeaders(response: NextResponse): NextResponse {
+  if (allowedOrigin) {
+    response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+  } else {
+    // 開発環境など、FRONTEND_URLが設定されていない場合は '*' を許可（本番では非推奨）
+    // もしくは、ローカル開発用のURL 'http://localhost:3000' を許可する
+    response.headers.set(
+      "Access-Control-Allow-Origin",
+      process.env.ACCESS_CONTROL_ALLOW_ORIGIN || "http://localhost:3000"
+    );
+  }
+  response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS"); // このルートはPOSTのみ
+  response.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+  return response;
+}
+
+// OPTIONSリクエストハンドラ (プリフライトリクエスト用)
+export async function OPTIONS(request: NextRequest) {
+  const response = new NextResponse(null, { status: 204 });
+  return setCorsHeaders(response);
+}
+
+// POSTリクエストハンドラ
 export async function POST(request: NextRequest) {
   try {
-    const { fileContent, fileType } = await request.json(); // keywords, summary, structure, options はこのコードでは不要
+    const { fileContent, fileType } = await request.json();
 
+    // --- 入力チェック ---
     if (!fileContent) {
-      return NextResponse.json(
+      let errorResponse = NextResponse.json(
         { error: "ファイル内容が提供されていません" },
         { status: 400 }
       );
+      return setCorsHeaders(errorResponse);
     }
-    // fileType チェックを追加
     if (!fileType) {
-      return NextResponse.json(
+      let errorResponse = NextResponse.json(
         { error: "ファイルタイプが指定されていません" },
         { status: 400 }
       );
+      return setCorsHeaders(errorResponse);
     }
 
-    // Gemini APIキーを環境変数から取得
+    // --- APIキー取得 ---
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
+      let errorResponse = NextResponse.json(
         { error: "APIキーが設定されていません" },
         { status: 500 }
       );
+      return setCorsHeaders(errorResponse);
     }
 
-    // @google/genai クライアントを初期化
+    // --- @google/genai クライアント初期化 ---
     const ai = new GoogleGenAI({ apiKey });
 
-    // --- 試行するモデルIDのリスト ---
+    // --- モデルIDリスト ---
     const modelIdsToTry = [
-      "gemini-2.5-flash-preview-04-17", // 最初に試すモデル
-      "gemini-2.0-flash", // フォールバックモデル
-      // 必要に応じてさらに追加可能 (例: "gemini-1.5-flash-latest")
+      "gemini-2.5-flash-preview-04-17",
+      "gemini-2.0-flash",
     ];
     const thinkingModelIds = ["gemini-2.5-flash-preview-04-17"];
 
-    // --- responseSchema の定義 (キーワード配列用) ---
+    // --- responseSchema (キーワード配列用) ---
     const keywordsResponseSchema: Schema = {
       type: Type.ARRAY,
-      description:
-        "抽出された重要なキーワード（単語または短いフレーズ）の文字列配列。",
-      items: {
-        type: Type.STRING,
-        description: "個々のキーワード文字列",
-      },
+      description: "抽出された重要なキーワードの文字列配列。",
+      items: { type: Type.STRING, description: "個々のキーワード文字列" },
     };
 
-    // プロンプトを作成
+    // --- プロンプトとコンテンツパーツの準備 ---
     let prompt = "";
     const requestContents: Content[] = [];
     const parts: Part[] = [];
 
     if (fileType.startsWith("text/")) {
-      prompt = `
-        以下のテキストから重要なキーワードを10〜15個抽出してください。
-        キーワードは単語または短いフレーズで、このテキストの主要な概念や用語を表すものにしてください。
-        キーワードのみをJSON配列形式で返してください。例: ["キーワード1", "キーワード2", ...]
-
-        テキスト:
-        ${fileContent}
-      `;
+      prompt = `以下のテキストから重要なキーワードを10〜15個抽出し、JSON配列形式で返してください。\n\nテキスト:\n${fileContent}`;
       parts.push({ text: prompt });
     } else if (fileType === "application/pdf") {
-      prompt = `
-        このPDFから重要なキーワードを10〜15個抽出してください。
-        キーワードは単語または短いフレーズで、このPDFの主要な概念や用語を表すものにしてください。
-        キーワードのみをJSON配列形式で返してください。例: ["キーワード1", "キーワード2", ...]
-      `;
+      prompt = `このPDFから重要なキーワードを10〜15個抽出し、JSON配列形式で返してください。`;
       parts.push({ text: prompt });
-      parts.push({
-        inlineData: {
-          mimeType: fileType,
-          data: fileContent,
-        },
-      });
+      parts.push({ inlineData: { mimeType: fileType, data: fileContent } });
     } else if (fileType.startsWith("image/")) {
-      prompt = `
-        この画像から重要なキーワードを5〜10個抽出してください。
-        キーワードは単語または短いフレーズで、この画像の主要な要素や概念を表すものにしてください。
-        キーワードのみをJSON配列形式で返してください。例: ["キーワード1", "キーワード2", ...]
-      `;
+      prompt = `この画像から重要なキーワードを5〜10個抽出し、JSON配列形式で返してください。`;
       parts.push({ text: prompt });
-      parts.push({
-        inlineData: {
-          mimeType: fileType,
-          data: fileContent,
-        },
-      });
+      parts.push({ inlineData: { mimeType: fileType, data: fileContent } });
     } else {
-      return NextResponse.json(
+      let errorResponse = NextResponse.json(
         { error: "サポートされていないファイルタイプです。" },
         { status: 400 }
       );
+      return setCorsHeaders(errorResponse);
     }
-
     requestContents.push({ role: "user", parts });
 
     // --- API呼び出しとリトライ処理 ---
-    let response: GenerateContentResponse | null = null;
-    let lastError: any = null; // 最後に発生したエラーを保持
+    let geminiResponse: GenerateContentResponse | null = null;
+    let lastError: any = null;
 
     for (const modelId of modelIdsToTry) {
       console.log(`モデル ${modelId} でAPI呼び出しを試行します...`);
       try {
-        // 生成設定 - JSON出力を期待
         const generationConfig: GenerateContentConfig = {
           responseMimeType: "application/json",
           responseSchema: keywordsResponseSchema,
         };
-        // thinkingモデルであれば、思考トークンを付与
         if (thinkingModelIds.includes(modelId)) {
-          // generationConfig.thinkingConfig = {
-          //   thinkingBudget: 24576,
-          // };
+          generationConfig.thinkingConfig = { thinkingBudget: 24576 };
         }
 
         const currentResponse = await ai.models.generateContent({
@@ -145,92 +133,56 @@ export async function POST(request: NextRequest) {
         });
 
         const resultText = currentResponse.text;
-        console.log(`モデル ${modelId} からの応答テキスト:`, resultText); // 応答をログ出力
+        console.log(`モデル ${modelId} からの応答テキスト:`, resultText);
 
-        // 応答が空でないか、ブロックされていないかを確認
         if (resultText) {
-          response = currentResponse; // 成功したレスポンスを保持
+          geminiResponse = currentResponse;
           console.log(`モデル ${modelId} で成功しました。`);
-          break; // 成功したらループを抜ける
+          break;
         } else {
           console.warn(`モデル ${modelId} からの応答が空でした。`);
-          // ブロックされた場合はリトライしない（他のモデルでもブロックされる可能性が高いため）
           if (currentResponse.promptFeedback?.blockReason) {
             console.error(
               `モデル ${modelId} でリクエストがブロックされました: ${currentResponse.promptFeedback.blockReason}`
             );
-            // ブロックされたレスポンスを保持してループを抜ける（後でエラー処理）
-            response = currentResponse;
+            geminiResponse = currentResponse; // ブロックされたレスポンスを保持
             break;
           }
-          // candidates が空、または content がない場合も考慮
-          if (
-            !currentResponse.candidates ||
-            currentResponse.candidates.length === 0 ||
-            !currentResponse.candidates[0].content
-          ) {
-            console.warn(
-              `モデル ${modelId} から有効なコンテンツが得られませんでした。`
-            );
-            lastError = new Error(
-              `モデル ${modelId} から有効なコンテンツが得られませんでした。`
-            );
-          } else {
-            // その他の理由で resultText が空の場合
-            console.warn(
-              `モデル ${modelId} から予期しない応答形式が返されました。`
-            );
-            lastError = new Error(
-              `モデル ${modelId} から予期しない応答形式が返されました。`
-            );
-          }
+          lastError = new Error(
+            `モデル ${modelId} から有効なコンテンツが得られませんでした。`
+          );
         }
       } catch (apiError) {
-        lastError = apiError; // エラーを保持
+        lastError = apiError;
         console.error(
           `モデル ${modelId} でのAPI呼び出し中にエラーが発生しました:`,
           apiError
         );
-        if (apiError instanceof Error) {
-          console.error(
-            `API Error Details (${modelId}):`,
-            JSON.stringify(apiError, null, 2)
-          );
-        }
-        // 次のモデルでリトライ
       }
     }
 
-    // --- リトライ処理ここまで ---
+    // --- 結果処理 ---
+    if (!geminiResponse || !geminiResponse.text) {
+      const blockReason = geminiResponse?.promptFeedback?.blockReason;
+      const errorMsg = blockReason
+        ? `リクエストがブロックされました: ${blockReason}`
+        : "AIモデルとの通信に失敗しました。";
+      const status = blockReason ? 400 : 502;
+      console.error(errorMsg, lastError);
 
-    // すべてのモデルで失敗した場合、またはブロックされた場合
-    if (!response || !response.text) {
-      if (response?.promptFeedback?.blockReason) {
-        // ブロックされた場合のエラーレスポンス
-        console.error("リクエストがブロックされました。");
-        return NextResponse.json(
-          {
-            error: `リクエストがブロックされました: ${response.promptFeedback.blockReason}`,
-          },
-          { status: 400 }
-        );
-      } else {
-        // その他の理由で有効な応答が得られなかった場合
-        console.error("すべてのモデルでAPI呼び出しに失敗しました。");
-        return NextResponse.json(
-          {
-            error: "AIモデルとの通信に失敗しました。",
-            details: lastError instanceof Error ? lastError.message : lastError,
-          },
-          { status: 502 } // Bad Gateway or appropriate status
-        );
-      }
+      let errorResponse = NextResponse.json(
+        {
+          error: errorMsg,
+          details: lastError instanceof Error ? lastError.message : lastError,
+        },
+        { status }
+      );
+      return setCorsHeaders(errorResponse);
     }
 
-    // 成功したレスポンスのテキスト部分を取得
-    const resultText = response.text;
+    const resultText = geminiResponse.text;
 
-    // 結果からキーワード配列を抽出 (以降の処理は変更なし)
+    // --- JSONパースとフォールバック ---
     let keywords: string[] = [];
     try {
       let parsedData;
@@ -240,29 +192,25 @@ export async function POST(request: NextRequest) {
           keywords = parsedData.filter(
             (item): item is string => typeof item === "string"
           );
-        } else {
-          console.warn(
-            "JSONレスポンスが期待される配列形式ではありませんでした。",
-            parsedData
+        } else if (
+          typeof parsedData === "object" &&
+          parsedData !== null &&
+          Array.isArray(parsedData.keywords)
+        ) {
+          // { "keywords": [...] } 形式のレスポンスにも対応
+          keywords = parsedData.keywords.filter(
+            (item: unknown): item is string => typeof item === "string"
           );
-          if (
-            typeof parsedData === "object" &&
-            parsedData !== null &&
-            Array.isArray(parsedData.keywords)
-          ) {
-            keywords = parsedData.keywords.filter(
-              (item: unknown): item is string => typeof item === "string"
-            );
-          }
         }
       } catch (initialParseError) {
         console.warn(
-          "直接のJSONパースに失敗しました。フォールバック処理を試みます。",
+          "直接のJSONパース失敗、フォールバック試行:",
           initialParseError
         );
         const jsonBlockMatch = resultText.match(/```json\s*(\[.*?\])\s*```/s);
         if (jsonBlockMatch && jsonBlockMatch[1]) {
           try {
+            // キャプチャグループの文字列 jsonBlockMatch[1] をパースする
             parsedData = JSON.parse(jsonBlockMatch[1]);
             if (Array.isArray(parsedData)) {
               keywords = parsedData.filter(
@@ -270,69 +218,42 @@ export async function POST(request: NextRequest) {
               );
             }
           } catch (blockParseError) {
-            console.warn(
-              "```json ブロックのパースに失敗しました。",
-              blockParseError
-            );
+            console.warn("```json ブロックのパース失敗:", blockParseError);
           }
         }
-
+        // 必要であれば更なるフォールバックを追加 (例: 行ごとの抽出)
         if (keywords.length === 0) {
-          const jsonMatch = resultText.match(/(\[.*\])/s);
-          if (jsonMatch && jsonMatch[1]) {
-            try {
-              parsedData = JSON.parse(jsonMatch[1]);
-              if (Array.isArray(parsedData)) {
-                keywords = parsedData.filter(
-                  (item): item is string => typeof item === "string"
-                );
-              }
-            } catch (regexParseError) {
-              console.warn(
-                "正規表現で抽出したJSON配列のパースに失敗しました。",
-                regexParseError
-              );
-            }
-          }
+          keywords = resultText
+            .split("\n")
+            .map((line) => line.trim().replace(/^["'\s*-]+|["'\s*-]+$/g, ""))
+            .filter(Boolean);
         }
       }
 
       if (keywords.length === 0) {
-        console.warn(
-          "JSON配列が見つかりませんでした。行ごとの抽出を試みます。"
-        );
-        keywords = resultText
-          .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0 && !line.includes(":"))
-          .map((line) => line.replace(/^["'\s*-]+|["'\s*-]+$/g, ""))
-          .filter(Boolean);
+        console.error("キーワードの抽出に失敗しました。");
+        // 空でも成功として返すか、エラーにするかは要件次第
+        let successResponse = NextResponse.json({ keywords: [] });
+        return setCorsHeaders(successResponse);
       }
+
+      let successResponse = NextResponse.json({ keywords });
+      return setCorsHeaders(successResponse);
     } catch (error) {
-      console.error(
-        "キーワード抽出結果の解析中に予期せぬエラーが発生しました:",
-        error
-      );
-      console.log("生の結果:", resultText);
+      console.error("キーワード抽出結果の解析中に予期せぬエラー:", error);
+      // console.log("生の結果:", resultText);
+      // 解析エラーの場合もフォールバックとして行分割などを試みる
       keywords = resultText
         .split("\n")
         .map((line) => line.trim())
-        .filter((line) => line.length > 0)
+        .filter(Boolean)
         .slice(0, 15);
+      let response = NextResponse.json({ keywords });
+      return setCorsHeaders(response);
     }
-
-    if (keywords.length === 0) {
-      console.error("キーワードの抽出に失敗しました。");
-      return NextResponse.json({ keywords: [] });
-    }
-
-    return NextResponse.json({ keywords });
   } catch (error) {
-    console.error(
-      "キーワード抽出APIルートで予期せぬエラーが発生しました:",
-      error
-    );
-    return NextResponse.json(
+    console.error("キーワード抽出APIルートで予期せぬエラー:", error);
+    let errorResponse = NextResponse.json(
       {
         error:
           error instanceof Error
@@ -341,5 +262,6 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+    return setCorsHeaders(errorResponse);
   }
 }
