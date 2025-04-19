@@ -1,22 +1,34 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  GoogleGenerativeAI,
-  // HarmCategory,
-  // HarmBlockThreshold,
-} from "@google/generative-ai"; // HarmCategory, HarmBlockThreshold をインポート（必要に応じて）
+  GoogleGenAI,
+  GenerateContentResponse,
+  Content,
+  Part,
+  GenerateContentConfig,
+  // HarmCategory, // 必要ならインポート
+  // HarmBlockThreshold, // 必要ならインポート
+} from "@google/genai";
 
 export async function POST(request: NextRequest) {
   try {
+    // 入力は fileContent と fileType のみ
     const { fileContent, fileType } = await request.json();
 
+    // 入力チェック
     if (!fileContent) {
       return NextResponse.json(
         { error: "ファイル内容が提供されていません" },
         { status: 400 }
       );
     }
+    if (!fileType) {
+      return NextResponse.json(
+        { error: "ファイルタイプが指定されていません" },
+        { status: 400 }
+      );
+    }
 
-    // Gemini APIキーを環境変数から取得
+    // APIキー取得
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -25,18 +37,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Gemini APIクライアントを初期化
-    const genAI = new GoogleGenerativeAI(apiKey);
-    // モデルを指定 (例: gemini-1.5-flash など、利用可能なモデルに変更可能)
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash-preview-04-17",
-    });
+    // @google/genai クライアント初期化
+    const ai = new GoogleGenAI({ apiKey });
 
-    // プロンプトを作成 (内容は変更なし)
+    // --- 試行するモデルIDのリスト ---
+    const modelIdsToTry = [
+      "gemini-2.5-flash-preview-04-17", // 最初に試すモデル
+      "gemini-2.0-flash", // フォールバックモデル
+      // 必要に応じてさらに追加可能 (例: "gemini-1.5-flash-latest")
+    ];
+
+    // プロンプトとコンテンツパーツの準備
     let prompt = "";
+    const requestContents: Content[] = [];
+    const parts: Part[] = [];
 
     if (fileType.startsWith("text/")) {
-      // テキストの場合
       prompt = `
         以下のテキストを分析して、以下の3つの情報を抽出してください。
         1. 重要なキーワードを10〜15個。キーワードは単語または短いフレーズで、このテキストの主要な概念や用語を表すものにしてください。
@@ -53,8 +69,8 @@ export async function POST(request: NextRequest) {
         テキスト:
         ${fileContent}
       `;
+      parts.push({ text: prompt });
     } else if (fileType === "application/pdf") {
-      // PDFの場合
       prompt = `
         このPDFを分析して、以下の3つの情報を抽出してください。
         1. 重要なキーワードを10〜15個。キーワードは単語または短いフレーズで、このPDFの主要な概念や用語を表すものにしてください。
@@ -68,8 +84,14 @@ export async function POST(request: NextRequest) {
           "structure": "PDFの構成や章立て、主要なセクションなどの構造の説明..."
         }
       `;
+      parts.push({ text: prompt });
+      parts.push({
+        inlineData: {
+          mimeType: fileType,
+          data: fileContent, // Base64
+        },
+      });
     } else if (fileType.startsWith("image/")) {
-      // 画像の場合
       prompt = `
         この画像を分析して、以下の3つの情報を抽出してください。
         1. 重要なキーワードを5〜10個。キーワードは単語または短いフレーズで、この画像の主要な要素や概念を表すものにしてください。
@@ -83,79 +105,159 @@ export async function POST(request: NextRequest) {
           "structure": "画像の構成要素や配置、視覚的な構造の説明..."
         }
       `;
+      parts.push({ text: prompt });
+      parts.push({
+        inlineData: {
+          mimeType: fileType,
+          data: fileContent, // Base64
+        },
+      });
     } else {
-      // サポート外のファイルタイプ
       return NextResponse.json(
         { error: "サポートされていないファイルタイプです。" },
         { status: 400 }
       );
     }
 
-    // --- startChat を使用するように変更 ---
-    const chatSession = model.startChat({
-      // generationConfig: {
-      //   // 必要に応じて temperature, topP, topK などを設定
-      //   // responseMimeType: "application/json" // モデルがJSON出力をサポートしている場合、パース処理を簡略化できる可能性あり
+    requestContents.push({ role: "user", parts });
+
+    // 生成設定 - JSON出力を期待
+    const generationConfig: GenerateContentConfig = {
+      responseMimeType: "application/json",
+      // thinkingConfig はモデルによってサポート状況が異なるためコメントアウト
+      // thinkingConfig: {
+      //   thinkingBudget: 24576,
       // },
-      // safetySettings: [ // 必要に応じてセーフティ設定を追加
+      // 必要に応じて他の設定を追加
+      // temperature: 0.7,
+      // safetySettings: [
       //   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      //   // 他のカテゴリも追加可能
       // ],
-      history: [], // 1回のやり取りなので履歴は空で開始
-    });
+    };
 
-    let sendMessageResponse; // 変数名を変更して明確化
+    // --- API呼び出しとリトライ処理 ---
+    let response: GenerateContentResponse | null = null;
+    let lastError: any = null;
 
-    try {
-      if (fileType.startsWith("image/") || fileType === "application/pdf") {
-        // 画像またはPDFの場合: プロンプトとインラインデータを配列で渡す
-        sendMessageResponse = await chatSession.sendMessage([
-          prompt,
-          {
-            inlineData: {
-              mimeType: fileType,
-              data: fileContent, // Base64エンコードされたデータ
-            },
-          },
-        ]);
-      } else {
-        // テキストの場合: プロンプトのみを渡す
-        sendMessageResponse = await chatSession.sendMessage(prompt);
+    for (const modelId of modelIdsToTry) {
+      console.log(`モデル ${modelId} でAPI呼び出しを試行します...`);
+      try {
+        const currentResponse = await ai.models.generateContent({
+          model: modelId,
+          contents: requestContents,
+          config: generationConfig,
+        });
+
+        const resultText = currentResponse.text;
+        console.log(`モデル ${modelId} からの応答テキスト:`, resultText);
+
+        if (resultText) {
+          response = currentResponse;
+          console.log(`モデル ${modelId} で成功しました。`);
+          break;
+        } else {
+          console.warn(`モデル ${modelId} からの応答が空でした。`);
+          if (currentResponse.promptFeedback?.blockReason) {
+            console.error(
+              `モデル ${modelId} でリクエストがブロックされました: ${currentResponse.promptFeedback.blockReason}`
+            );
+            response = currentResponse; // ブロックされたレスポンスを保持
+            break;
+          }
+          if (
+            !currentResponse.candidates ||
+            currentResponse.candidates.length === 0 ||
+            !currentResponse.candidates[0].content
+          ) {
+            console.warn(
+              `モデル ${modelId} から有効なコンテンツが得られませんでした。`
+            );
+            lastError = new Error(
+              `モデル ${modelId} から有効なコンテンツが得られませんでした。`
+            );
+          } else {
+            console.warn(
+              `モデル ${modelId} から予期しない応答形式が返されました。`
+            );
+            lastError = new Error(
+              `モデル ${modelId} から予期しない応答形式が返されました。`
+            );
+          }
+        }
+      } catch (apiError) {
+        lastError = apiError;
+        console.error(
+          `モデル ${modelId} でのAPI呼び出し中にエラーが発生しました:`,
+          apiError
+        );
+        if (apiError instanceof Error) {
+          console.error(
+            `API Error Details (${modelId}):`,
+            JSON.stringify(apiError, null, 2)
+          );
+        }
       }
-    } catch (apiError) {
-      console.error("Gemini API呼び出し中にエラーが発生しました:", apiError);
-      // APIからのエラーレスポンスに関する詳細情報をログに出力
-      if (apiError instanceof Error && "response" in apiError) {
-        console.error("API Error Response:", (apiError as any).response);
-      }
-      return NextResponse.json(
-        { error: "AIモデルとの通信中にエラーが発生しました。" },
-        { status: 502 } // Bad Gateway or appropriate status
-      );
     }
-    // --- 変更ここまで ---
+    // --- リトライ処理ここまで ---
 
-    // レスポンスのテキスト部分を取得 (ここは generateContent と同様)
-    const resultText = sendMessageResponse.response.text();
-
-    // 結果からJSONを抽出 (以降の処理は変更なし)
-    try {
-      // 応答テキストの最初に ```json ... ``` が含まれるかチェック
-      const jsonBlockMatch = resultText.match(/```json\s*(\{.*?\})\s*```/s);
-      let data;
-
-      if (jsonBlockMatch && jsonBlockMatch[1]) {
-        // ```json ブロックから抽出
-        data = JSON.parse(jsonBlockMatch[1]);
+    // すべてのモデルで失敗した場合、またはブロックされた場合
+    if (!response || !response.text) {
+      if (response?.promptFeedback?.blockReason) {
+        console.error("リクエストがブロックされました。");
+        return NextResponse.json(
+          {
+            error: `リクエストがブロックされました: ${response.promptFeedback.blockReason}`,
+          },
+          { status: 400 }
+        );
       } else {
-        // JSON形式の文字列を直接探す (フォールバック)
-        const jsonMatch = resultText.match(/\{.*\}/s);
-        if (jsonMatch) {
-          data = JSON.parse(jsonMatch[0]);
+        console.error("すべてのモデルでAPI呼び出しに失敗しました。");
+        return NextResponse.json(
+          {
+            error: "AIモデルとの通信に失敗しました。",
+            details: lastError instanceof Error ? lastError.message : lastError,
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    // 成功したレスポンスのテキスト部分を取得
+    const resultText = response.text;
+
+    // 結果からJSONを抽出 (キーワード・概要・構造)
+    try {
+      let data;
+      try {
+        data = JSON.parse(resultText);
+      } catch (initialParseError) {
+        console.warn(
+          "直接のJSONパースに失敗しました。フォールバック処理を試みます。",
+          initialParseError
+        );
+        const jsonBlockMatch = resultText.match(/```json\s*(\{.*?\})\s*```/s);
+        if (jsonBlockMatch && jsonBlockMatch[1]) {
+          try {
+            data = JSON.parse(jsonBlockMatch[1]);
+          } catch (blockParseError) {
+            console.error(
+              "```json ブロックのパースに失敗しました。",
+              blockParseError
+            );
+          }
+        } else {
+          try {
+            data = JSON.parse(resultText);
+          } catch (fallbackParseError) {
+            console.error(
+              "フォールバックのJSONパースにも失敗しました。",
+              fallbackParseError
+            );
+          }
         }
       }
 
-      if (data) {
+      if (data && typeof data === "object") {
         // JSONが正常にパースできた場合
         return NextResponse.json({
           keywords: data.keywords || [],
@@ -163,11 +265,11 @@ export async function POST(request: NextRequest) {
           structure: data.structure || "",
         });
       } else {
-        // JSONが見つからない場合のフォールバック処理 (元のコードと同様)
+        // JSONが見つからない、またはパースに失敗した場合のフォールバック処理
         console.warn(
-          "JSON形式での応答が見つかりませんでした。テキストからの抽出を試みます。"
+          "JSON形式での応答が見つからないか、パースに失敗しました。テキストからの抽出を試みます。"
         );
-        console.log("Raw response text:", resultText); // デバッグ用に生テキストを出力
+        console.log("Raw response text:", resultText);
 
         const lines = resultText
           .split("\n")
@@ -198,17 +300,17 @@ export async function POST(request: NextRequest) {
         if (keywordsIndex >= 0) {
           const nextSectionIndex =
             [summaryIndex, structureIndex]
-              .filter((idx) => idx > keywordsIndex && idx >= 0) // idx >= 0 を追加
-              .sort((a, b) => a - b)[0] ?? lines.length; // Nullish coalescing operator
+              .filter((idx) => idx > keywordsIndex && idx >= 0)
+              .sort((a, b) => a - b)[0] ?? lines.length;
 
           const keywordsText = lines
             .slice(keywordsIndex + 1, nextSectionIndex)
             .join(" ");
 
           keywords = keywordsText
-            .replace(/^[^\[]*\[|\][^\]]*$/g, "") // 配列の括弧と前後の不要な文字を除去
-            .replace(/["']/g, "") // クォーテーションを除去
-            .split(/[,、]/) // カンマや読点で分割
+            .replace(/^[^\[]*\[|\][^\]]*$/g, "")
+            .replace(/["']/g, "")
+            .split(/[,、]/)
             .map((k) => k.trim())
             .filter(Boolean);
         }
@@ -217,31 +319,29 @@ export async function POST(request: NextRequest) {
           const nextSectionIndex =
             structureIndex > summaryIndex && structureIndex >= 0
               ? structureIndex
-              : lines.length; // idx >= 0 を追加
+              : lines.length;
           summary = lines
             .slice(summaryIndex + 1, nextSectionIndex)
             .join(" ")
-            .replace(/^(概要:|summary:)/i, "") // 先頭のラベルを除去
+            .replace(/^(概要:|summary:)/i, "")
             .trim();
         }
 
         if (structureIndex >= 0) {
           const prevSectionIndex =
             [keywordsIndex, summaryIndex]
-              .filter((idx) => idx < structureIndex && idx >= 0) // idx >= 0 を追加
-              .sort((a, b) => b - a)[0] ?? -1; // Nullish coalescing operator
-          // 構造の説明が前のセクションの続きでないか確認
+              .filter((idx) => idx < structureIndex && idx >= 0)
+              .sort((a, b) => b - a)[0] ?? -1;
           const startLine =
             structureIndex > prevSectionIndex ? structureIndex + 1 : 0;
 
           structure = lines
             .slice(startLine)
             .join(" ")
-            .replace(/^(構成:|構造:|structure:)/i, "") // 先頭のラベルを除去
+            .replace(/^(構成:|構造:|structure:)/i, "")
             .trim();
         }
 
-        // フォールバックの結果、何も抽出できなかった場合の処理を追加
         if (keywords.length === 0 && !summary && !structure) {
           console.error("フォールバック処理でも情報の抽出に失敗しました。");
           return NextResponse.json({
@@ -256,16 +356,15 @@ export async function POST(request: NextRequest) {
       }
     } catch (parseError) {
       console.error("結果の解析中にエラーが発生しました:", parseError);
-      console.log("Raw response text:", resultText); // 解析失敗時も生テキストを出力
+      console.log("Raw response text:", resultText);
 
-      // 解析失敗時は、エラーを示す情報を返す
       return NextResponse.json(
         {
           keywords: [],
           summary: "応答の解析に失敗しました。",
           structure: `モデルからの応答: ${resultText.substring(0, 500)}${
             resultText.length > 500 ? "..." : ""
-          }`, // 応答の一部を含める
+          }`,
         },
         { status: 500 }
       );

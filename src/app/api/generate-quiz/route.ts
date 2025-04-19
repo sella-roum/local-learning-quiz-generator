@@ -1,23 +1,35 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  GoogleGenerativeAI,
-  // HarmCategory,
-  // HarmBlockThreshold,
-} from "@google/generative-ai"; // HarmCategory, HarmBlockThreshold をインポート（必要に応じて）
+  GoogleGenAI,
+  GenerateContentResponse,
+  Content,
+  Part,
+  GenerateContentConfig,
+  // HarmCategory, // 必要ならインポート
+  // HarmBlockThreshold, // 必要ならインポート
+} from "@google/genai";
+
+// クイズの型定義 (レスポンスの検証用)
+interface Quiz {
+  category: string;
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+  explanation: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
     const { fileContent, fileType, keywords, summary, structure, options } =
       await request.json();
 
-    // fileContent も summary もない場合はエラー
+    // 入力チェック
     if (!fileContent && !summary) {
       return NextResponse.json(
         { error: "ファイル内容または概要が提供されていません" },
         { status: 400 }
       );
     }
-    // fileContent があるのに fileType がない場合はエラー (画像/PDFの場合に必須)
     if (fileContent && !fileType) {
       return NextResponse.json(
         { error: "ファイルタイプが指定されていません" },
@@ -25,7 +37,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Gemini APIキーを環境変数から取得
+    // APIキー取得
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -34,28 +46,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // オプションのデフォルト値を設定
+    // オプション設定
     const count = options?.count || 5;
     const difficulty = options?.difficulty || "medium";
     const category = options?.category || "一般";
     const customPrompt = options?.prompt || "";
-
-    // Gemini APIクライアントを初期化
-    const genAI = new GoogleGenerativeAI(apiKey);
-    // モデルを指定 (例: gemini-1.5-flash など、利用可能なモデルに変更可能)
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash-preview-04-17",
-    });
-
-    // プロンプトを作成 (内容は変更なし)
-    let prompt = "";
     const difficultyText =
       difficulty === "easy"
         ? "簡単"
         : difficulty === "medium"
         ? "普通"
         : "難しい";
-    const jsonFormatString = "```json ```";
+
+    // @google/genai クライアント初期化
+    const ai = new GoogleGenAI({ apiKey });
+
+    // --- 試行するモデルIDのリスト ---
+    const modelIdsToTry = [
+      "gemini-2.5-flash-preview-04-17", // 最初に試すモデル
+      "gemini-2.0-flash", // フォールバックモデル
+      // 必要に応じてさらに追加可能 (例: "gemini-1.5-flash-latest")
+    ];
+
+    // JSON形式の指示
+    const jsonFormatString = "```json ```"; // プロンプト内で使用
     const jsonFormatInstruction = `
 各クイズは以下の形式のJSONオブジェクトとして返してください:
 {
@@ -76,12 +90,15 @@ export async function POST(request: NextRequest) {
 マークダウンの ${jsonFormatString} ブロックで囲んでください。
 `;
 
-    // ファイルタイプに基づいてプロンプトのベースを作成
+    // プロンプトとコンテンツパーツの準備
+    let promptBase = "";
+    const parts: Part[] = [];
+
     if (
       fileType &&
       (fileType.startsWith("text/") || fileType === "application/pdf")
     ) {
-      prompt = `
+      promptBase = `
 以下のテキストと関連情報に基づいて、${count}個の4択クイズを作成してください。
 難易度は${difficultyText}にしてください。
 カテゴリは「${category}」です。
@@ -102,8 +119,19 @@ ${structure || ""}
 関連キーワード:
 ${keywords ? keywords.join(", ") : ""}
     `;
+      if (fileType.startsWith("text/")) {
+        parts.push({ text: promptBase });
+      } else {
+        parts.push({ text: promptBase });
+        parts.push({
+          inlineData: {
+            mimeType: fileType,
+            data: fileContent,
+          },
+        });
+      }
     } else if (fileType && fileType.startsWith("image/")) {
-      prompt = `
+      promptBase = `
 この画像に基づいて、${count}個の4択クイズを作成してください。
 難易度は${difficultyText}にしてください。
 カテゴリは「${category}」です。
@@ -121,9 +149,15 @@ ${structure || ""}
 関連キーワード:
 ${keywords ? keywords.join(", ") : ""}
     `;
+      parts.push({ text: promptBase });
+      parts.push({
+        inlineData: {
+          mimeType: fileType,
+          data: fileContent,
+        },
+      });
     } else if (!fileContent && summary) {
-      // ファイルがなく、概要情報のみの場合
-      prompt = `
+      promptBase = `
 以下の概要情報に基づいて、${count}個の4択クイズを作成してください。
 難易度は${difficultyText}にしてください。
 カテゴリは「${category}」です。
@@ -141,130 +175,219 @@ ${structure || ""}
 関連キーワード:
 ${keywords ? keywords.join(", ") : ""}
     `;
+      parts.push({ text: promptBase });
     } else {
-      // ファイルタイプが不明またはサポート外で、ファイルコンテンツがある場合
-      // (このケースはエラーチェックで弾かれているはずだが念のため)
       return NextResponse.json(
-        {
-          error:
-            "サポートされていないファイルタイプか、ファイル情報が不完全です。",
-        },
+        { error: "ファイル情報が不完全またはサポート外です。" },
         { status: 400 }
       );
     }
 
-    // --- startChat を使用するように変更 ---
-    const chatSession = model.startChat({
-      // generationConfig: {
-      //   responseMimeType: "application/json", // モデルがサポートしていればJSONで直接受け取れる可能性
+    const requestContents: Content[] = [{ role: "user", parts }];
+
+    // 生成設定 - JSON出力を期待
+    const generationConfig: GenerateContentConfig = {
+      responseMimeType: "application/json",
+      // thinkingConfig はモデルによってサポート状況が異なるためコメントアウト
+      // thinkingConfig: {
+      //   thinkingBudget: 24576,
       // },
-      // safetySettings: [ // 必要に応じてセーフティ設定を追加
-      //   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-      // ],
-      history: [], // 1回のやり取りなので履歴は空
-    });
+      // 必要に応じて他の設定を追加
+      // temperature: 0.7,
+      // safetySettings: [...]
+    };
 
-    let sendMessageResponse;
-    try {
-      const messageParts: any[] = [prompt]; // プロンプトは必ず含む
+    // --- API呼び出しとリトライ処理 ---
+    let response: GenerateContentResponse | null = null;
+    let lastError: any = null;
 
-      // fileContent があり、画像またはPDFの場合、inlineData を追加
-      if (
-        fileContent &&
-        fileType &&
-        (fileType.startsWith("image/") || fileType === "application/pdf")
-      ) {
-        messageParts.push({
-          inlineData: {
-            mimeType: fileType,
-            data: fileContent, // Base64エンコードされたデータ
-          },
+    for (const modelId of modelIdsToTry) {
+      console.log(`モデル ${modelId} でAPI呼び出しを試行します...`);
+      try {
+        const currentResponse = await ai.models.generateContent({
+          model: modelId,
+          contents: requestContents,
+          config: generationConfig,
         });
-      }
-      // メッセージを送信 (テキストのみ、またはプロンプト+ファイル)
-      sendMessageResponse = await chatSession.sendMessage(messageParts);
-    } catch (apiError) {
-      console.error("Gemini API呼び出し中にエラーが発生しました:", apiError);
-      if (apiError instanceof Error && "response" in apiError) {
-        console.error("API Error Response:", (apiError as any).response);
-      }
-      // API呼び出し自体のエラー
-      return NextResponse.json(
-        { error: "AIモデルとの通信中にエラーが発生しました。" },
-        { status: 502 } // Bad Gateway など適切なステータスコード
-      );
-    }
-    // --- 変更ここまで ---
 
-    // レスポンスのテキスト部分を取得
-    const resultText = sendMessageResponse.response.text();
-    console.log({ resultText });
-    // 結果からクイズ配列を抽出
-    let quizzes = [];
-    try {
-      // マークダウンの ```json [...] ``` ブロックを探す
-      const jsonBlockMatch = resultText.match(/```json\s*(\[.*?\])\s*```/s);
-      let jsonString = null;
+        const resultText = currentResponse.text;
+        console.log(`モデル ${modelId} からの応答テキスト:`, resultText);
 
-      if (jsonBlockMatch && jsonBlockMatch[1]) {
-        // マークダウンブロックからJSON文字列を抽出
-        jsonString = jsonBlockMatch[1];
-        console.log("クイズJSONをマークダウンブロックから抽出しました。");
-      } else {
-        // マークダウンブロックが見つからない場合、応答全体から直接JSON配列を探す
-        const jsonArrayMatch = resultText.match(/\[.*\]/s);
-        if (jsonArrayMatch && jsonArrayMatch[0]) {
-          jsonString = jsonArrayMatch[0];
-          console.log("クイズJSONをテキスト全体から抽出しました。");
+        if (resultText) {
+          response = currentResponse;
+          console.log(`モデル ${modelId} で成功しました。`);
+          break;
         } else {
-          console.warn("応答からJSON配列が見つかりませんでした。");
-          console.log("Raw response text:", resultText);
-          throw new Error(
-            "生成された応答から有効なJSON形式のクイズ配列が見つかりませんでした。"
+          console.warn(`モデル ${modelId} からの応答が空でした。`);
+          if (currentResponse.promptFeedback?.blockReason) {
+            console.error(
+              `モデル ${modelId} でリクエストがブロックされました: ${currentResponse.promptFeedback.blockReason}`
+            );
+            response = currentResponse; // ブロックされたレスポンスを保持
+            break;
+          }
+          if (
+            !currentResponse.candidates ||
+            currentResponse.candidates.length === 0 ||
+            !currentResponse.candidates[0].content
+          ) {
+            console.warn(
+              `モデル ${modelId} から有効なコンテンツが得られませんでした。`
+            );
+            lastError = new Error(
+              `モデル ${modelId} から有効なコンテンツが得られませんでした。`
+            );
+          } else {
+            console.warn(
+              `モデル ${modelId} から予期しない応答形式が返されました。`
+            );
+            lastError = new Error(
+              `モデル ${modelId} から予期しない応答形式が返されました。`
+            );
+          }
+        }
+      } catch (apiError) {
+        lastError = apiError;
+        console.error(
+          `モデル ${modelId} でのAPI呼び出し中にエラーが発生しました:`,
+          apiError
+        );
+        if (apiError instanceof Error) {
+          console.error(
+            `API Error Details (${modelId}):`,
+            JSON.stringify(apiError, null, 2)
           );
+        }
+      }
+    }
+    // --- リトライ処理ここまで ---
+
+    // すべてのモデルで失敗した場合、またはブロックされた場合
+    if (!response || !response.text) {
+      if (response?.promptFeedback?.blockReason) {
+        console.error("リクエストがブロックされました。");
+        return NextResponse.json(
+          {
+            error: `リクエストがブロックされました: ${response.promptFeedback.blockReason}`,
+          },
+          { status: 400 }
+        );
+      } else {
+        console.error("すべてのモデルでAPI呼び出しに失敗しました。");
+        return NextResponse.json(
+          {
+            error: "AIモデルとの通信に失敗しました。",
+            details: lastError instanceof Error ? lastError.message : lastError,
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    // 成功したレスポンスのテキスト部分を取得
+    const resultText = response.text;
+
+    // 結果からクイズ配列を抽出
+    let quizzes: Quiz[] = [];
+    try {
+      let jsonString: string | null = null;
+
+      // 1. responseMimeType: "application/json" を指定したので、直接パースを試みる
+      try {
+        const parsedData = JSON.parse(resultText);
+        if (Array.isArray(parsedData)) {
+          jsonString = resultText;
+          console.log("クイズJSONを直接パースしました。");
+        } else {
+          console.warn("直接パース結果が配列ではありませんでした。");
+        }
+      } catch (directParseError) {
+        console.warn(
+          "直接のJSONパースに失敗しました。マークダウンブロックを探します。",
+          directParseError
+        );
+      }
+
+      // 2. マークダウンの ```json [...] ``` ブロックを探す (フォールバック)
+      if (!jsonString) {
+        const jsonBlockMatch = resultText.match(/```json\s*(\[.*?\])\s*```/s);
+        if (jsonBlockMatch && jsonBlockMatch[1]) {
+          jsonString = jsonBlockMatch[1];
+          console.log("クイズJSONをマークダウンブロックから抽出しました。");
+        }
+      }
+
+      // 3. 応答全体から直接JSON配列を探す (フォールバック)
+      if (!jsonString) {
+        const jsonArrayMatch = resultText.match(/(\[.*\])/s);
+        if (jsonArrayMatch && jsonArrayMatch[1]) {
+          try {
+            JSON.parse(jsonArrayMatch[1]);
+            jsonString = jsonArrayMatch[1];
+            console.log("クイズJSONをテキスト全体から抽出しました。");
+          } catch (e) {
+            console.warn(
+              "正規表現で抽出した文字列は有効なJSON配列ではありませんでした。"
+            );
+          }
         }
       }
 
       // 抽出したJSON文字列をパース
       if (jsonString) {
         try {
-          quizzes = JSON.parse(jsonString);
-          // パース後の形式チェック (配列であり、要素がオブジェクトであることを確認)
+          const parsedQuizzes = JSON.parse(jsonString);
+          // パース後の形式チェック
           if (
-            !Array.isArray(quizzes) ||
-            !quizzes.every((q) => typeof q === "object" && q !== null)
+            !Array.isArray(parsedQuizzes) ||
+            !parsedQuizzes.every(
+              (q): q is Quiz =>
+                typeof q === "object" &&
+                q !== null &&
+                typeof q.category === "string" &&
+                typeof q.question === "string" &&
+                Array.isArray(q.options) &&
+                q.options.length === 4 &&
+                q.options.every((opt: unknown) => typeof opt === "string") &&
+                typeof q.correctOptionIndex === "number" &&
+                q.correctOptionIndex >= 0 &&
+                q.correctOptionIndex < 4 &&
+                typeof q.explanation === "string"
+            )
           ) {
             console.error(
-              "パース結果が期待される配列形式ではありません:",
-              quizzes
+              "パース結果が期待されるクイズ配列形式ではありません:",
+              parsedQuizzes
             );
             throw new Error(
               "抽出されたJSONは有効なクイズ配列形式ではありません。"
             );
           }
+          quizzes = parsedQuizzes;
         } catch (parseError) {
           console.error(
-            "抽出したJSON文字列のパースに失敗しました:",
+            "抽出したJSON文字列のパースまたは検証に失敗しました:",
             parseError
           );
-          console.log("抽出試行文字列:", jsonString); // パース試行文字列を出力
-          console.log("Raw response text:", resultText);
+          console.log("抽出試行文字列:", jsonString);
           throw new Error(
-            `クイズ生成結果のJSONパースに失敗しました。エラー: ${
+            `クイズ生成結果のJSONパースまたは検証に失敗しました。エラー: ${
               parseError instanceof Error ? parseError.message : parseError
             }`
           );
         }
       } else {
-        // ここに来る場合は上のチェックで Error が throw されているはずだが念のため
-        throw new Error("抽出可能なJSON文字列が見つかりませんでした。");
+        console.warn("応答からJSON配列が見つかりませんでした。");
+        console.log("Raw response text:", resultText);
+        throw new Error(
+          "生成された応答から有効なJSON形式のクイズ配列が見つかりませんでした。"
+        );
       }
     } catch (error) {
       console.error(
         "クイズ生成結果の解析または検証中にエラーが発生しました:",
         error
       );
-      // エラー発生時は、エラー情報と生の応答テキスト（一部）を返す
       return NextResponse.json(
         {
           error:
@@ -273,7 +396,7 @@ ${keywords ? keywords.join(", ") : ""}
               : "クイズ生成結果の解析に失敗しました",
           rawResponsePrefix:
             resultText.substring(0, 500) +
-            (resultText.length > 500 ? "..." : ""), // デバッグ用に一部応答を含める
+            (resultText.length > 500 ? "..." : ""),
         },
         { status: 500 }
       );
