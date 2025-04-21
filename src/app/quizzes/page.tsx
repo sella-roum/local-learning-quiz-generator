@@ -403,13 +403,14 @@ export default function QuizzesPage() {
 
             <AnimatePresence>
               <motion.div
-                className="grid gap-4"
+                className="gap-4"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
                 {currentQuizzes.map((quiz, index) => (
                   <motion.div
+                    className="py-2"
                     key={quiz.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -418,7 +419,7 @@ export default function QuizzesPage() {
                     <Card className="card-hover border-2 overflow-hidden">
                       <CardHeader className="pb-2 bg-gradient-to-r from-background to-muted/50">
                         <div className="flex justify-between items-start">
-                          <div className="space-y-1">
+                          <div className="space-y-1 overflow-hidden min-w-0">
                             <CardTitle className="text-lg">
                               {quiz.question}
                             </CardTitle>

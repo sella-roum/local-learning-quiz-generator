@@ -427,7 +427,9 @@ export default function QuizSessionPage() {
                       <Button
                         key={index}
                         variant="outline"
-                        className={`quiz-option ${
+                        // 高さを自動調整し、内容を左寄せにする
+                        className={`quiz-option h-auto justify-start text-left ${
+                          // text-left を Button に移動
                           isAnswered &&
                           option.originalIndex ===
                             currentQuiz.correctOptionIndex
@@ -441,34 +443,49 @@ export default function QuizSessionPage() {
                         onClick={() => handleSelectOption(index)}
                         disabled={isAnswered}
                       >
+                        {/* アイテムを中央揃えに戻す */}
                         <div className="flex items-center gap-3 w-full">
-                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">
+                          {/* shrink-0 は維持、マージン削除 */}
+                          <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">
                             {String.fromCharCode(65 + index)}
                           </div>
-                          <span>{option.text}</span>
-                          {isAnswered &&
-                            option.originalIndex ===
-                              currentQuiz.correctOptionIndex && (
-                              <CheckCircle className="quiz-option-icon text-green-600" />
-                            )}
-                          {isAnswered &&
-                            index === selectedOption &&
-                            option.originalIndex !==
-                              currentQuiz.correctOptionIndex && (
-                              <XCircle className="quiz-option-icon text-red-600" />
-                            )}
+                          {/* テキスト折り返しと単語の強制改行を許可 */}
+                          <span className="flex-grow whitespace-normal break-words">
+                            {option.text}
+                          </span>
+                          {/* アイコンを右端に配置するためのコンテナ */}
+                          {/* self-center は親が items-center なので不要 */}
+                          <div className="flex-shrink-0 ml-auto pl-2">
+                            {isAnswered &&
+                              option.originalIndex ===
+                                currentQuiz.correctOptionIndex && (
+                                // アイコンサイズを明示的に指定
+                                <CheckCircle className="quiz-option-icon text-green-600 w-5 h-5" />
+                              )}
+                            {isAnswered &&
+                              index === selectedOption &&
+                              option.originalIndex !==
+                                currentQuiz.correctOptionIndex && (
+                                // アイコンサイズを明示的に指定
+                                <XCircle className="quiz-option-icon text-red-600 w-5 h-5" />
+                              )}
+                          </div>
                         </div>
                       </Button>
                     </motion.div>
                   ))}
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-between border-t bg-muted/20 p-4">
+              {/* デフォルトは縦並び (flex-col)、sm (640px) 以上で横並び (flex-row) に */}
+              <CardFooter className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-t bg-muted/20 p-4">
                 {isAnswered ? (
-                  <div className="flex-1">
+                  // モバイルでも幅いっぱいを使うように w-full を追加
+                  <div className="flex-1 w-full">
                     <Alert
                       variant={isCorrect ? "default" : "destructive"}
-                      className={`flex flex-col items-left ${
+                      // items-left を削除 (デフォルトの items-center で良い場合) または調整
+                      // text-left を AlertDescription など適切な場所に追加する方が良い場合もある
+                      className={`flex flex-col ${
                         isCorrect
                           ? "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700"
                           : "bg-red-100 dark:bg-red-900/30"
@@ -494,28 +511,32 @@ export default function QuizSessionPage() {
                         </div>
                       </AlertTitle>
                       <AlertDescription
-                        className={
+                        // ここに text-left を追加して、説明文を左寄せに
+                        className={`text-left ${
                           isCorrect
                             ? "text-green-700 dark:text-green-400"
                             : "text-red-700 dark:text-red-400"
-                        }
+                        }`}
                       >
                         {isCorrect
                           ? "素晴らしい！正解です。"
-                          : `正解は ${
-                              shuffledOptions.findIndex(
-                                (o) =>
-                                  o.originalIndex ===
-                                  currentQuiz.correctOptionIndex
-                              ) + 1
-                            }番: ${
+                          : `正解は ${String.fromCharCode(
+                              65 +
+                                shuffledOptions.findIndex(
+                                  // A, B, C... で表示
+                                  (o) =>
+                                    o.originalIndex ===
+                                    currentQuiz.correctOptionIndex
+                                )
+                            )}: ${
                               currentQuiz.options[
                                 currentQuiz.correctOptionIndex
                               ]
                             } です。`}
                         {currentQuiz.explanation && (
                           <div
-                            className={`mt-2 pt-2 border-t ${
+                            // text-left をここにも追加
+                            className={`mt-2 pt-2 border-t text-left ${
                               isCorrect
                                 ? "border-green-300 dark:border-green-700"
                                 : "border-red-300 dark:border-red-700"
@@ -532,13 +553,16 @@ export default function QuizSessionPage() {
                     </Alert>
                   </div>
                 ) : (
-                  <div className="flex-1"></div>
+                  // 回答前も高さを合わせるため (必要なら)
+                  <div className="flex-1 w-full"></div>
                 )}
 
                 {isAnswered && (
                   <Button
                     onClick={handleNextQuestion}
-                    className="ml-4 bg-primary hover:bg-primary/90"
+                    // モバイルでは上マージン(mt-4)と幅いっぱい(w-full)
+                    // sm以上では上マージンなし(sm:mt-0)、幅自動(sm:w-auto)、左マージン(sm:ml-4)
+                    className="mt-4 w-full sm:mt-0 sm:w-auto sm:ml-4 bg-primary hover:bg-primary/90"
                   >
                     {currentIndex < quizzes.length - 1 ? (
                       <>
