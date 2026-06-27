@@ -38,6 +38,8 @@ export default function FileDetailPage({ params: paramsPromise }: PageProps) {
 
   // ファイルIDからファイル情報を取得
   useEffect(() => {
+    let objectUrl: string | null = null;
+
     const fetchFile = async () => {
       try {
         const fileData = await db.files.get(fileId);
@@ -46,8 +48,8 @@ export default function FileDetailPage({ params: paramsPromise }: PageProps) {
 
           // PDFファイルの場合はURLを生成
           if (fileData.type === "application/pdf") {
-            const url = URL.createObjectURL(fileData.blob);
-            setPdfUrl(url);
+            objectUrl = URL.createObjectURL(fileData.blob);
+            setPdfUrl(objectUrl);
           }
         } else {
           setError("指定されたファイルが見つかりませんでした");
@@ -62,13 +64,12 @@ export default function FileDetailPage({ params: paramsPromise }: PageProps) {
 
     fetchFile();
 
-    // クリーンアップ関数
     return () => {
-      if (pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [fileId, pdfUrl]);
+  }, [fileId]);
 
   // ファイルをダウンロードする関数
   const handleDownload = useCallback(() => {

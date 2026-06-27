@@ -49,9 +49,9 @@
 
 - Are there any path traversal vulnerabilities?
 - Is CORS correctly configured with `FRONTEND_URL`?
-- Are production logs free of sensitive content (AI responses, file contents, generated quiz text)?
-- Are API keys and secrets properly handled? Are `.env`, `.env.local`, API keys, and other secrets excluded from commits?
-- Are external API calls clearly communicated to the user?
+- Do production logs avoid sensitive content such as AI responses, file contents, and generated quiz text?
+- Are `.env`, `.env.local`, API keys, and other secrets excluded from commits?
+- Is the use of external APIs clearly communicated to the user?
 - Is the PDF file size limited to 14MB to stay within Gemini's inline data limit?
 
 ## PR Creation Template
