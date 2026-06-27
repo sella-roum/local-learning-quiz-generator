@@ -13,11 +13,7 @@ const eslintConfig = [
   {
     ignores,
   },
-  {
-    rules: {
-      "react-hooks/set-state-in-effect": "off",
-    },
-  },
+
 ];
 
 export default eslintConfig;
