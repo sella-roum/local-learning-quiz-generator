@@ -105,6 +105,18 @@
 
 5.  ブラウザで [http://localhost:3000](http://localhost:3000) を開きます。
 
+## Development
+
+1. Copy `.env.example` to `.env.local`.
+2. Set `GEMINI_API_KEY` in `.env.local`.
+3. Use Node.js 22.
+4. Install dependencies with `npm ci`.
+5. Run `npm run check` before opening a pull request.
+
+## Development and operation notice
+
+This app may send file contents to an external AI API during AI analysis or quiz generation. Do not upload files containing confidential, personal, or proprietary information.
+
 ## 注意事項
 
 - **API キー**: このアプリケーションは Google Gemini API を使用します。API キーを `.env.local` ファイルに設定する必要があります。
