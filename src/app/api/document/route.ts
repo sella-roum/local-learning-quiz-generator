@@ -1,6 +1,7 @@
 import fs from "fs";
-import path from "path";
 import { NextRequest, NextResponse } from "next/server";
+import { resolveDocumentPath } from "@/lib/server/document-path";
+import { serverErrorLog } from "@/lib/server/safe-logger";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
@@ -34,30 +35,39 @@ export async function OPTIONS(request: NextRequest) {
 // GETリクエストハンドラ
 export async function GET(request: NextRequest) {
   const fileName = request.nextUrl.searchParams.get("fileName");
-  const filePath = path.join(
-    process.cwd(),
-    "public",
-    "documents",
-    fileName || ""
-  );
+  const resolved = await resolveDocumentPath(fileName);
+
+  if (!resolved.ok) {
+    const errorResponse = NextResponse.json(
+      { error: resolved.error },
+      { status: resolved.status }
+    );
+    return setCorsHeaders(errorResponse);
+  }
+
   try {
-    let markdownContent = fs.readFileSync(filePath, "utf-8");
+    let markdownContent = await fs.promises.readFile(resolved.filePath, "utf-8");
     // 画像パスの置換 (Render環境でも /documents/images/ を参照するように)
     markdownContent = markdownContent.replace(
       /images\//g,
       "/documents/images/"
     );
 
-    let response = NextResponse.json({ content: markdownContent });
-    // setCorsHeadersがNextResponse<unknown>を返すため、型アサーションで具体的な型を指定
+    const response = NextResponse.json({ content: markdownContent });
     return setCorsHeaders(response);
   } catch (error) {
-    console.error("Failed to read markdown file:", error);
-    let errorResponse = NextResponse.json(
+    serverErrorLog("Failed to read markdown file", {
+      route: "document",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorCode:
+        typeof error === "object" && error !== null && "code" in error
+          ? String(error.code)
+          : undefined,
+    });
+    const errorResponse = NextResponse.json(
       { error: "Failed to read document" },
       { status: 500 }
     );
-    // setCorsHeadersがNextResponse<unknown>を返すため、型アサーションで具体的な型を指定
     return setCorsHeaders(errorResponse);
   }
 }

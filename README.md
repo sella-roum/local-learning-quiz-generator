@@ -115,11 +115,14 @@
 
 ## Development and operation notice
 
-This app may send file contents to an external AI API during AI analysis or quiz generation. Do not upload files containing confidential, personal, or proprietary information.
+- **IndexedDB storage**: Files you upload and generated quiz data are stored in your browser's IndexedDB, not on any server.
+- **External AI API**: Keyword extraction, summary generation, and quiz creation send file contents (text, images, PDFs) to the Google Gemini API. Do not upload files containing confidential, personal, or proprietary information.
+- **URL content fetching**: When fetching content from a URL, the URL and page content are sent to an external service (Jina Reader). Do not input URLs for confidential or authenticated pages.
 
 ## 注意事項
 
 - **API キー**: このアプリケーションは Google Gemini API を使用します。API キーを `.env.local` ファイルに設定する必要があります。
 - **機密情報**: ファイルの解析やクイズ生成には Gemini API が使用されます。AI モデルの学習データとして利用される可能性があるため、**機密情報や個人情報を含むファイルはアップロードしないでください**。
 - **データ保存**: ファイル情報、クイズデータ、学習履歴はすべてお使いのブラウザの **IndexedDB** に保存されます。他のブラウザやデバイスとは共有されません。データを移行する場合は、エクスポート/インポート機能を使用してください。
+- **外部送信**: ファイル内容（テキスト、画像、PDF）はキーワード抽出・要約生成・クイズ作成時に Google Gemini API へ送信されます。URL取得時は入力したURLやページ内容が Jina Reader へ送信されます。
 - **PDF 処理**: PDF からのテキスト抽出には `pdfjs-dist` を使用しています。複雑なレイアウトや画像ベースの PDF の場合、テキスト抽出が不完全になることがあります。

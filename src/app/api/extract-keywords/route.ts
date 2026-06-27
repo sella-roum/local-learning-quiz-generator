@@ -8,6 +8,7 @@ import {
   Schema,
   Type,
 } from "@google/genai";
+import { debugLog, serverErrorLog } from "@/lib/server/safe-logger";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
@@ -133,7 +134,9 @@ export async function POST(request: NextRequest) {
         });
 
         const resultText = currentResponse.text;
-        console.log(`モデル ${modelId} からの応答テキスト:`, resultText);
+        debugLog(`モデル ${modelId} からの応答`, {
+          responseLength: resultText?.length ?? 0,
+        });
 
         if (resultText) {
           geminiResponse = currentResponse;
@@ -154,10 +157,12 @@ export async function POST(request: NextRequest) {
         }
       } catch (apiError) {
         lastError = apiError;
-        console.error(
-          `モデル ${modelId} でのAPI呼び出し中にエラーが発生しました:`,
-          apiError
-        );
+        serverErrorLog(`モデル ${modelId} でのAPI呼び出しエラー`, {
+          modelId,
+          errorName:
+            apiError instanceof Error ? apiError.name : "UnknownError",
+          route: "extract-keywords",
+        });
       }
     }
 
@@ -168,7 +173,10 @@ export async function POST(request: NextRequest) {
         ? `リクエストがブロックされました: ${blockReason}`
         : "AIモデルとの通信に失敗しました。";
       const status = blockReason ? 400 : 502;
-      console.error(errorMsg, lastError);
+      serverErrorLog(errorMsg, {
+        blockReason: blockReason ?? undefined,
+        route: "extract-keywords",
+      });
 
       let errorResponse = NextResponse.json(
         {
@@ -240,8 +248,10 @@ export async function POST(request: NextRequest) {
       let successResponse = NextResponse.json({ keywords });
       return setCorsHeaders(successResponse);
     } catch (error) {
-      console.error("キーワード抽出結果の解析中に予期せぬエラー:", error);
-      // console.log("生の結果:", resultText);
+      serverErrorLog("キーワード抽出結果の解析中に予期せぬエラー", {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        route: "extract-keywords",
+      });
       // 解析エラーの場合もフォールバックとして行分割などを試みる
       keywords = resultText
         .split("\n")
@@ -252,7 +262,10 @@ export async function POST(request: NextRequest) {
       return setCorsHeaders(response);
     }
   } catch (error) {
-    console.error("キーワード抽出APIルートで予期せぬエラー:", error);
+    serverErrorLog("キーワード抽出APIルートで予期せぬエラー", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      route: "extract-keywords",
+    });
     let errorResponse = NextResponse.json(
       {
         error:
