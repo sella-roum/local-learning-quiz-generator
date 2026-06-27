@@ -157,27 +157,6 @@ export default function QuizSessionPage() {
     fetchQuizzes();
   }, [fetchQuizzes]);
 
-  // タイマー処理
-  useEffect(() => {
-    if (timeLeft === null || isAnswered) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(timer);
-          // 時間切れの場合は不正解として処理
-          if (!isAnswered) {
-            handleTimeUp();
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeLeft, isAnswered]);
-
   // 時間切れの処理
   const handleTimeUp = useCallback(async () => {
     if (isAnswered) return;
@@ -203,6 +182,27 @@ export default function QuizSessionPage() {
       console.error("結果の保存中にエラーが発生しました:", error);
     }
   }, [currentIndex, isAnswered, quizzes, results, sessionId]);
+
+  // タイマー処理
+  useEffect(() => {
+    if (timeLeft === null || isAnswered) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          // 時間切れの場合は不正解として処理
+          if (!isAnswered) {
+            handleTimeUp();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft, isAnswered, handleTimeUp]);
 
   // 選択肢をクリックした時の処理
   const handleSelectOption = useCallback(
@@ -254,21 +254,6 @@ export default function QuizSessionPage() {
     ]
   );
 
-  // 次の問題に進む
-  const handleNextQuestion = useCallback(() => {
-    if (currentIndex < quizzes.length - 1) {
-      const nextIndex = currentIndex + 1;
-      setCurrentIndex(nextIndex);
-      shuffleQuizOptions(quizzes[nextIndex]);
-      setSelectedOption(null);
-      setIsAnswered(false);
-      setTimeLeft(timeLimit); // タイマーをリセット
-    } else {
-      // 全問終了したら結果画面に遷移
-      finishSession();
-    }
-  }, [currentIndex, quizzes, shuffleQuizOptions, timeLimit]);
-
   // セッションを終了して結果画面に遷移
   const finishSession = useCallback(async () => {
     try {
@@ -285,6 +270,21 @@ export default function QuizSessionPage() {
       setError("セッション終了処理中にエラーが発生しました");
     }
   }, [sessionId, router, results]);
+
+  // 次の問題に進む
+  const handleNextQuestion = useCallback(() => {
+    if (currentIndex < quizzes.length - 1) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      shuffleQuizOptions(quizzes[nextIndex]);
+      setSelectedOption(null);
+      setIsAnswered(false);
+      setTimeLeft(timeLimit); // タイマーをリセット
+    } else {
+      // 全問終了したら結果画面に遷移
+      finishSession();
+    }
+  }, [currentIndex, quizzes, shuffleQuizOptions, timeLimit, finishSession]);
 
   // 配列をシャッフルする関数
   const shuffleArray = <T,>(array: T[]): T[] => {

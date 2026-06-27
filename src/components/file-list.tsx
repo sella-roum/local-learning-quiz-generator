@@ -16,7 +16,7 @@ import { formatBytes, formatDate } from "@/lib/utils";
 import type { FileItem } from "@/lib/db";
 import {
   FileText,
-  Image,
+  Image as ImageIcon,
   FileArchive,
   File,
   Trash2,
@@ -47,7 +47,7 @@ export function FileList({
     if (fileType.startsWith("text/")) {
       return <FileText className="h-5 w-5 text-blue-500" />;
     } else if (fileType.startsWith("image/")) {
-      return <Image className="h-5 w-5 text-green-500" />;
+      return <ImageIcon className="h-5 w-5 text-green-500" />;
     } else if (fileType === "application/pdf") {
       return <FileArchive className="h-5 w-5 text-red-500" />;
     } else {

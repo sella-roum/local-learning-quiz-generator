@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Button } from "@/components/ui/button";
@@ -37,12 +37,13 @@ import {
 } from "@/components/ui/command";
 
 interface PageProps {
-  params: {
+  params: Promise<{
     quizId: string;
-  };
+  }>;
 }
 
-export default function EditQuizPage({ params }: PageProps) {
+export default function EditQuizPage({ params: paramsPromise }: PageProps) {
+  const params = use(paramsPromise);
   const router = useRouter();
   const quizId = Number.parseInt(params.quizId);
 

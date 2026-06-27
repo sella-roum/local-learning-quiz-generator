@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { db, type FileItem } from "@/lib/db";
 // import { extractTextFromPDF } from "@/lib/pdf-utils";
 import { extractKeywordsAndSummary } from "@/lib/api-utils";
-import { Loader2, Upload, FileText, Image, FileType } from "lucide-react";
+import { Loader2, Upload, FileText, Image as ImageIcon, FileType } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
@@ -164,7 +164,7 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
           </div>
           <div className="flex flex-col items-center">
             <div className="rounded-full bg-purple-100 dark:bg-purple-900/30 p-2">
-              <Image className="h-5 w-5 text-purple-500" />
+              <ImageIcon className="h-5 w-5 text-purple-500" />
             </div>
             <span className="text-xs mt-1 text-muted-foreground">画像</span>
           </div>

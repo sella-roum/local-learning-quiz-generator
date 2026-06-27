@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Button } from "@/components/ui/button";
@@ -15,18 +15,19 @@ import {
   BookOpen,
   Download,
   FileText,
-  Image,
+  Image as ImageIcon,
   FileType,
 } from "lucide-react";
 import Link from "next/link";
 
 interface PageProps {
-  params: {
+  params: Promise<{
     fileId: string;
-  };
+  }>;
 }
 
-export default function FileDetailPage({ params }: PageProps) {
+export default function FileDetailPage({ params: paramsPromise }: PageProps) {
+  const params = use(paramsPromise);
   const router = useRouter();
   const fileId = Number.parseInt(params.fileId);
 
@@ -37,6 +38,8 @@ export default function FileDetailPage({ params }: PageProps) {
 
   // ファイルIDからファイル情報を取得
   useEffect(() => {
+    let objectUrl: string | null = null;
+
     const fetchFile = async () => {
       try {
         const fileData = await db.files.get(fileId);
@@ -45,8 +48,8 @@ export default function FileDetailPage({ params }: PageProps) {
 
           // PDFファイルの場合はURLを生成
           if (fileData.type === "application/pdf") {
-            const url = URL.createObjectURL(fileData.blob);
-            setPdfUrl(url);
+            objectUrl = URL.createObjectURL(fileData.blob);
+            setPdfUrl(objectUrl);
           }
         } else {
           setError("指定されたファイルが見つかりませんでした");
@@ -61,10 +64,9 @@ export default function FileDetailPage({ params }: PageProps) {
 
     fetchFile();
 
-    // クリーンアップ関数
     return () => {
-      if (pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
       }
     };
   }, [fileId]);
@@ -93,7 +95,7 @@ export default function FileDetailPage({ params }: PageProps) {
     if (fileType?.startsWith("text/")) {
       return <FileText className="h-12 w-12" />;
     } else if (fileType?.startsWith("image/")) {
-      return <Image className="h-12 w-12" />;
+      return <ImageIcon className="h-12 w-12" />;
     } else if (fileType === "application/pdf") {
       return <FileType className="h-12 w-12" />;
     } else {
@@ -193,6 +195,7 @@ export default function FileDetailPage({ params }: PageProps) {
                   <div>
                     <h3 className="text-lg font-semibold mb-2">プレビュー</h3>
                     <div className="border rounded-md overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={
                           URL.createObjectURL(file.blob) || "/placeholder.svg"
