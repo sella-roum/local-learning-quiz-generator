@@ -153,7 +153,10 @@ export default function CreateQuizPage() {
         throw new Error("サポートされていないファイル形式です");
       }
 
-      const quizzes = await generateQuizzes(
+      const {
+        quizzes,
+        rejectedCount: apiRejectedCount,
+      } = await generateQuizzes(
         fileObject,
         fileContent,
         file.keywords,
@@ -176,16 +179,20 @@ export default function CreateQuizPage() {
       }));
 
       // 正規化: options を string[] に統一し、不正なデータを除外
-      const { quizzes: normalizedQuizzes, rejectedCount } =
-        normalizeGeneratedQuizzes(quizzesWithFileInfo, {
-          fileId: file.id,
-          fileName: file.name,
-          category:
-            generationOptions.category === "新規カテゴリを作成"
-              ? newCategory
-              : generationOptions.category,
-          difficulty: generationOptions.difficulty,
-        });
+      const {
+        quizzes: normalizedQuizzes,
+        rejectedCount: localRejectedCount,
+      } = normalizeGeneratedQuizzes(quizzesWithFileInfo, {
+        fileId: file.id,
+        fileName: file.name,
+        category:
+          generationOptions.category === "新規カテゴリを作成"
+            ? newCategory
+            : generationOptions.category,
+        difficulty: generationOptions.difficulty,
+      });
+
+      const totalRejected = apiRejectedCount + localRejectedCount;
 
       if (normalizedQuizzes.length === 0) {
         setError(
@@ -195,9 +202,9 @@ export default function CreateQuizPage() {
         return;
       }
 
-      if (rejectedCount > 0) {
+      if (totalRejected > 0) {
         setError(
-          `生成結果に保存できないクイズが含まれていたため、${rejectedCount}問を除外しました。`
+          `生成結果に保存できないクイズが含まれていたため、${totalRejected}問を除外しました。`
         );
       }
 
@@ -241,15 +248,27 @@ export default function CreateQuizPage() {
     try {
       setIsLoading(true);
 
-      // 保存前に再度正規化
-      const { quizzes: normalizedQuizzes, rejectedCount } =
-        normalizeGeneratedQuizzes(quizzesToSave, {
+      // 保存前に1件ずつ正規化（fileId/fileNameを維持するため）
+      const normalizedQuizzes: GenerateQuiz[] = [];
+      let rejectedCount = 0;
+
+      for (const quiz of quizzesToSave) {
+        const { quiz: normalized } = normalizeGeneratedQuiz(quiz, {
+          fileId: quiz.fileId,
+          fileName: quiz.fileName,
           category:
             generationOptions.category === "新規カテゴリを作成"
               ? newCategory
               : generationOptions.category,
           difficulty: generationOptions.difficulty,
         });
+
+        if (normalized) {
+          normalizedQuizzes.push(normalized);
+        } else {
+          rejectedCount++;
+        }
+      }
 
       if (normalizedQuizzes.length === 0) {
         setError("保存可能なクイズがありません。クイズの内容を確認してください。");
@@ -259,8 +278,10 @@ export default function CreateQuizPage() {
 
       if (rejectedCount > 0) {
         setError(
-          `一部のクイズは保存できませんでした（${rejectedCount}問）。`
+          `一部のクイズに不備があります（${rejectedCount}問）。内容を確認して修正するか、選択を解除してください。`
         );
+        setIsLoading(false);
+        return;
       }
 
       // 正規化済みクイズをDB保存
@@ -343,9 +364,11 @@ export default function CreateQuizPage() {
   const saveEditedQuiz = () => {
     if (editingQuizIndex === null) return;
 
+    const originalQuiz = generatedQuizzes[editingQuizIndex];
+
     // 編集内容を正規化で検証
     const rawQuiz = {
-      ...generatedQuizzes[editingQuizIndex],
+      ...originalQuiz,
       category: editedQuiz.category,
       question: editedQuiz.question,
       options: editedQuiz.options.map((option) => option.trim()),
@@ -354,6 +377,8 @@ export default function CreateQuizPage() {
     };
 
     const { quiz: normalized } = normalizeGeneratedQuiz(rawQuiz, {
+      fileId: originalQuiz.fileId,
+      fileName: originalQuiz.fileName,
       difficulty: generationOptions.difficulty,
     });
 

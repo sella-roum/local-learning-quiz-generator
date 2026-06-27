@@ -5,6 +5,53 @@ export interface NormalizeGeneratedQuizDefaults {
   difficulty?: "easy" | "medium" | "hard";
 }
 
+export interface GenerateQuizNormalized {
+  id: string;
+  fileId: number | undefined;
+  fileName: string | undefined;
+  question: string;
+  correctOptionIndex: number;
+  options: string[];
+  explanation: string;
+  category: string;
+  difficulty: "easy" | "medium" | "hard";
+  keyword: string;
+}
+
+function createQuizId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  return `quiz-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeOptionValue(input: unknown): string | null {
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (trimmed && trimmed !== "[object Object]") {
+      return trimmed;
+    }
+    return null;
+  }
+
+  if (
+    input &&
+    typeof input === "object" &&
+    "text" in input &&
+    typeof (input as { text?: unknown }).text === "string"
+  ) {
+    const trimmed = (input as { text: string }).text.trim();
+    if (trimmed && trimmed !== "[object Object]") {
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
 export function normalizeGeneratedQuiz(
   input: unknown,
   defaults?: NormalizeGeneratedQuizDefaults
@@ -31,12 +78,11 @@ export function normalizeGeneratedQuiz(
 
   const options: string[] = [];
   for (let i = 0; i < raw.options.length; i++) {
-    const opt = raw.options[i];
-    const trimmed = (opt != null ? String(opt) : "").trim();
-    if (!trimmed) {
-      return { quiz: null, reason: `option[${i}] is empty` };
+    const normalized = normalizeOptionValue(raw.options[i]);
+    if (!normalized) {
+      return { quiz: null, reason: `option[${i}] is invalid` };
     }
-    options.push(trimmed);
+    options.push(normalized);
   }
 
   const correctOptionIndex = raw.correctOptionIndex;
@@ -48,6 +94,16 @@ export function normalizeGeneratedQuiz(
   ) {
     return { quiz: null, reason: "correctOptionIndex is invalid" };
   }
+
+  const fileId =
+    defaults?.fileId ??
+    (typeof raw.fileId === "number" ? raw.fileId : undefined);
+
+  const fileName =
+    defaults?.fileName ??
+    (typeof raw.fileName === "string" && raw.fileName.trim() !== ""
+      ? raw.fileName.trim()
+      : undefined);
 
   const explanation =
     typeof raw.explanation === "string" ? raw.explanation : "";
@@ -67,14 +123,14 @@ export function normalizeGeneratedQuiz(
 
   const id =
     typeof raw.id === "string" && raw.id.trim() !== ""
-      ? raw.id
-      : crypto.randomUUID();
+      ? raw.id.trim()
+      : createQuizId();
 
   return {
     quiz: {
       id,
-      fileId: defaults?.fileId,
-      fileName: defaults?.fileName,
+      fileId,
+      fileName,
       question,
       correctOptionIndex,
       options,
@@ -84,19 +140,6 @@ export function normalizeGeneratedQuiz(
       keyword,
     },
   };
-}
-
-export interface GenerateQuizNormalized {
-  id: string;
-  fileId: number | undefined;
-  fileName: string | undefined;
-  question: string;
-  correctOptionIndex: number;
-  options: string[];
-  explanation: string;
-  category: string;
-  difficulty: "easy" | "medium" | "hard";
-  keyword: string;
 }
 
 export function normalizeGeneratedQuizzes(
