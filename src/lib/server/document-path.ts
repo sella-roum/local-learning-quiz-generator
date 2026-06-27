@@ -115,5 +115,16 @@ export async function resolveDocumentPath(
     };
   }
 
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.stat(resolvedRealPath);
+  } catch {
+    return { ok: false, status: 404, error: "Document not found" };
+  }
+
+  if (!stat.isFile() || path.extname(resolvedRealPath) !== ".md") {
+    return { ok: false, status: 400, error: "Invalid document fileName" };
+  }
+
   return { ok: true, filePath: resolvedRealPath };
 }

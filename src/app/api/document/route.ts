@@ -1,6 +1,7 @@
 import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveDocumentPath } from "@/lib/server/document-path";
+import { serverErrorLog } from "@/lib/server/safe-logger";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
@@ -55,7 +56,14 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.json({ content: markdownContent });
     return setCorsHeaders(response);
   } catch (error) {
-    console.error("Failed to read markdown file:", error);
+    serverErrorLog("Failed to read markdown file", {
+      route: "document",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorCode:
+        typeof error === "object" && error !== null && "code" in error
+          ? String(error.code)
+          : undefined,
+    });
     const errorResponse = NextResponse.json(
       { error: "Failed to read document" },
       { status: 500 }

@@ -8,7 +8,7 @@ import {
   Schema,
   Type,
 } from "@google/genai";
-import { debugLog, serverErrorLog } from "@/lib/server/safe-logger";
+import { serverErrorLog } from "@/lib/server/safe-logger";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
