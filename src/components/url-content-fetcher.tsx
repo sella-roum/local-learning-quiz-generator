@@ -11,6 +11,7 @@ import { extractKeywordsAndSummary } from "@/lib/api-utils";
 import { Loader2, Globe, LinkIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
+import { PrivacyNotice } from "@/components/privacy-notice";
 
 interface UrlContentFetcherProps {
   onFetchComplete: (fileItem?: FileItem) => void;
@@ -128,6 +129,7 @@ export function UrlContentFetcher({
 
   return (
     <div className="space-y-4">
+      <PrivacyNotice type="url" />
       <div className="flex flex-col gap-2">
         <div className="flex gap-2">
           <Input

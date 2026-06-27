@@ -9,6 +9,7 @@ import {
   Type,
 } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
+import { debugLog, serverErrorLog } from "@/lib/server/safe-logger";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
@@ -202,10 +203,9 @@ export async function POST(request: NextRequest) {
         });
 
         const resultText = currentResponse.text;
-        console.log(
-          `モデル ${modelId} からのクイズ生成応答テキスト:`,
-          resultText
-        );
+        debugLog(`モデル ${modelId} からの応答`, {
+          responseLength: resultText?.length ?? 0,
+        });
 
         if (resultText) {
           // 応答が配列形式か確認 (簡易チェック)
@@ -244,10 +244,12 @@ export async function POST(request: NextRequest) {
         }
       } catch (apiError) {
         lastError = apiError;
-        console.error(
-          `モデル ${modelId} でのクイズ生成API呼び出し中にエラーが発生しました:`,
-          apiError
-        );
+        serverErrorLog(`モデル ${modelId} でのクイズ生成API呼び出しエラー`, {
+          modelId,
+          errorName:
+            apiError instanceof Error ? apiError.name : "UnknownError",
+          route: "generate-quiz",
+        });
       }
     }
 
@@ -258,7 +260,10 @@ export async function POST(request: NextRequest) {
         ? `リクエストがブロックされました: ${blockReason}`
         : "AIモデルとの通信に失敗しました。";
       const status = blockReason ? 400 : 502;
-      console.error(errorMsg, lastError);
+      serverErrorLog(errorMsg, {
+        blockReason: blockReason ?? undefined,
+        route: "generate-quiz",
+      });
 
       let errorResponse = NextResponse.json(
         {
@@ -306,7 +311,9 @@ export async function POST(request: NextRequest) {
           typeof q.category !== "string" ||
           !["easy", "medium", "hard"].includes(q.difficulty)
         ) {
-          console.warn("不正な形式のクイズデータが含まれています:", q);
+          debugLog("不正な形式のクイズデータをスキップ", {
+            route: "generate-quiz",
+          });
           return null; // 不正なデータはスキップ
         }
         return {
@@ -334,7 +341,10 @@ export async function POST(request: NextRequest) {
     let successResponse = NextResponse.json({ quizzes: generatedQuizzes });
     return setCorsHeaders(successResponse);
   } catch (error) {
-    console.error("クイズ生成APIルートで予期せぬエラー:", error);
+    serverErrorLog("クイズ生成APIルートで予期せぬエラー", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      route: "generate-quiz",
+    });
     let errorResponse = NextResponse.json(
       {
         error:

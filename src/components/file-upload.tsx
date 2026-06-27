@@ -10,6 +10,7 @@ import { extractKeywordsAndSummary } from "@/lib/api-utils";
 import { Loader2, Upload, FileText, Image as ImageIcon, FileType } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { PrivacyNotice } from "@/components/privacy-notice";
 
 interface FileUploadProps {
   onUploadComplete: (fileItem?: FileItem) => void;
@@ -180,8 +181,7 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
 
     return (
       <div className="space-y-4" ref={ref}>
-        {" "}
-        {/* ref を div に設定 */}
+        <PrivacyNotice type="file" />
         <div
           className={`grid w-full gap-4 ${isUploading ? "" : "cursor-pointer"}`}
           onDragEnter={handleDrag}

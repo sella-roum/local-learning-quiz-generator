@@ -8,6 +8,7 @@ import {
   Schema,
   Type,
 } from "@google/genai";
+import { debugLog, serverErrorLog } from "@/lib/server/safe-logger";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
@@ -162,10 +163,12 @@ export async function POST(request: NextRequest) {
         }
       } catch (apiError) {
         lastError = apiError;
-        console.error(
-          `モデル ${modelId} でのAPI呼び出し中にエラーが発生しました:`,
-          apiError
-        );
+        serverErrorLog(`モデル ${modelId} でのAPI呼び出しエラー`, {
+          modelId,
+          errorName:
+            apiError instanceof Error ? apiError.name : "UnknownError",
+          route: "extract-keywords-summary",
+        });
       }
     }
 
@@ -176,7 +179,10 @@ export async function POST(request: NextRequest) {
         ? `リクエストがブロックされました: ${blockReason}`
         : "AIモデルとの通信に失敗しました。";
       const status = blockReason ? 400 : 502;
-      console.error(errorMsg, lastError);
+      serverErrorLog(errorMsg, {
+        blockReason: blockReason ?? undefined,
+        route: "extract-keywords-summary",
+      });
 
       let errorResponse = NextResponse.json(
         {
@@ -229,7 +235,10 @@ export async function POST(request: NextRequest) {
       return setCorsHeaders(errorResponse);
     }
   } catch (error) {
-    console.error("APIルートで予期せぬエラーが発生しました:", error);
+    serverErrorLog("APIルートで予期せぬエラー", {
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      route: "extract-keywords-summary",
+    });
     let errorResponse = NextResponse.json(
       {
         error:
