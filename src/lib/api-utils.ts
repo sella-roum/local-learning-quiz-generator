@@ -1,19 +1,13 @@
-export interface QuizOption {
-  text: string;
-  isCorrect: boolean;
-}
+import {
+  normalizeGeneratedQuizzes,
+  type GenerateQuizNormalized,
+} from "@/lib/quiz-normalizer";
 
-export interface GenerateQuiz {
-  id: string;
-  fileId: number | undefined;
-  fileName: string | undefined;
-  question: string;
-  correctOptionIndex: number;
-  options: QuizOption[];
-  explanation: string;
-  category: string;
-  difficulty: "easy" | "medium" | "hard";
-  keyword: string;
+export type GenerateQuiz = GenerateQuizNormalized;
+
+export interface GenerateQuizzesResult {
+  quizzes: GenerateQuiz[];
+  rejectedCount: number;
 }
 
 interface GenerateQuizOptions {
@@ -132,7 +126,7 @@ export async function generateQuizzes(
   summary: string,
   structure: string,
   options?: GenerateQuizOptions
-): Promise<GenerateQuiz[]> {
+): Promise<GenerateQuizzesResult> {
   try {
     // ファイルタイプに応じてリクエストボディを作成
     const requestBody: GenerateQuizRequestBody = {
@@ -217,7 +211,17 @@ export async function generateQuizzes(
     }
 
     const data = await response.json();
-    return data.quizzes;
+    const rawQuizzes = Array.isArray(data.quizzes) ? data.quizzes : [];
+    const { quizzes, rejectedCount } = normalizeGeneratedQuizzes(rawQuizzes, {
+      category: options?.category || "一般",
+      difficulty: options?.difficulty || "medium",
+    });
+    if (quizzes.length === 0) {
+      throw new Error(
+        "保存可能なクイズが生成されませんでした。条件を変えて再生成してください。"
+      );
+    }
+    return { quizzes, rejectedCount };
   } catch (error) {
     console.error("クイズ生成中にエラーが発生しました:", error);
     throw error;
