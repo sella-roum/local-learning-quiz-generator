@@ -5,8 +5,8 @@ import { useState, useRef, forwardRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { db, type FileItem } from "@/lib/db";
-// import { extractTextFromPDF } from "@/lib/pdf-utils";
 import { extractKeywordsAndSummary } from "@/lib/api-utils";
+import { assertFileSizeWithinLimit, assertTextWithinLimit, AI_INPUT_LIMITS } from "@/lib/limits";
 import { Loader2, Upload, FileText, Image as ImageIcon, FileType } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -61,27 +61,17 @@ export const FileUpload = forwardRef<HTMLDivElement, FileUploadProps>(
         let extractedText: string | undefined;
         let fileContent: string | ArrayBuffer;
 
-        // PDFファイルの場合はテキスト抽出とArrayBuffer読み込みを並行して行う
         if (file.type === "application/pdf") {
+          assertFileSizeWithinLimit(file);
           setProgress(20);
-
-          // PDFファイルそのものをArrayBufferとして読み込む
           fileContent = await readFileAsArrayBuffer(file);
-
-          try {
-            // PDFからテキストを抽出（エラーが発生しても続行）
-            // エラーが発生するため、空の文字列を返す
-            extractedText = ""; // await extractTextFromPDF(file);
-          } catch (pdfError) {
-            console.error("PDFテキスト抽出エラー:", pdfError);
-            extractedText = "PDFからのテキスト抽出に失敗しました";
-          }
+          extractedText = undefined;
         } else if (file.type.startsWith("text/")) {
-          // テキストファイルの場合は内容を読み込む
           fileContent = await readFileAsText(file);
-          extractedText = fileContent as string;
+          assertTextWithinLimit(fileContent, AI_INPUT_LIMITS.maxTextChars, "テキスト本文");
+          extractedText = fileContent;
         } else if (file.type.startsWith("image/")) {
-          // 画像ファイルの場合はArrayBufferとして読み込む
+          assertFileSizeWithinLimit(file);
           fileContent = await readFileAsArrayBuffer(file);
         } else {
           throw new Error("サポートされていないファイル形式です");

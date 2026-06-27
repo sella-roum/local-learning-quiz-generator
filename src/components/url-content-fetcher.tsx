@@ -12,6 +12,7 @@ import { Loader2, Globe, LinkIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { PrivacyNotice } from "@/components/privacy-notice";
+import { assertTextWithinLimit, AI_INPUT_LIMITS } from "@/lib/limits";
 
 interface UrlContentFetcherProps {
   onFetchComplete: (fileItem?: FileItem) => void;
@@ -70,6 +71,9 @@ export function UrlContentFetcher({
 
       setProgress(50);
       const content = await response.text();
+
+      // URL取得本文の文字数上限を検証
+      assertTextWithinLimit(content, AI_INPUT_LIMITS.maxUrlTextChars, "URL取得本文");
 
       // ファイル名を生成（URLからドメイン名を抽出）
       const urlObj = new URL(url);

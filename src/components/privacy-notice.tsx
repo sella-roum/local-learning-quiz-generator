@@ -11,7 +11,7 @@ const notices: Record<PrivacyNoticeProps["type"], { title: string; description: 
     title: "プライバシーに関する注意",
     description:
       "ファイルはこのブラウザのIndexedDBに保存されます。ただし、キーワード抽出やクイズ生成などのAI解析を行う際、ファイル内容は外部のGemini APIへ送信されます。",
-    details: "対象: PDF、画像、テキストファイル",
+    details: "対象: PDF（本体をGemini APIへ直接送信）、画像、テキストファイル",
   },
   url: {
     title: "URL取得に関する注意",
