@@ -752,9 +752,9 @@ React依存修正、GenerateQuiz.options修正、PDF.js削除、CORS共通化、
 
 - [ ] npm ci
 - [ ] npm run check
-- [ ] npm run typecheck
-- [ ] npm run lint
-- [ ] npm run build
+- [ ] npm run typecheck（`npm run check` 失敗時の切り分け）
+- [ ] npm run lint（`npm run check` 失敗時の切り分け）
+- [ ] npm run build（`npm run check` 失敗時の切り分け）
 - [ ] opencode debug config（任意。OpenCodeが利用可能な場合のみ）
 
 ## Notes
