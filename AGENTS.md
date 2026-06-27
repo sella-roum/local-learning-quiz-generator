@@ -47,8 +47,9 @@ Priority order for initial tasks:
 
 ## Scope Restrictions
 
-- This PR targets OpenCode environment setup only.
-- Application-level P0/P1 fixes (React versions, GenerateQuiz.options, path traversal, log suppression, PDF.js removal, Gemini env vars, CORS unification, AI validation) are deferred to subsequent PRs.
+- Keep changes within the scope of the active task/PR.
+- If the active plan limits work to environment/tooling setup, do not mix in unrelated application-level fixes.
+- Record deferred follow-ups in the PR body or the active plan instead of expanding scope here.
 
 ## Verification Commands After Implementation
 
