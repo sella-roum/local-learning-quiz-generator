@@ -1,7 +1,4 @@
-export interface QuizOption {
-  text: string;
-  isCorrect: boolean;
-}
+import { normalizeGeneratedQuizzes } from "@/lib/quiz-normalizer";
 
 export interface GenerateQuiz {
   id: string;
@@ -9,7 +6,7 @@ export interface GenerateQuiz {
   fileName: string | undefined;
   question: string;
   correctOptionIndex: number;
-  options: QuizOption[];
+  options: string[];
   explanation: string;
   category: string;
   difficulty: "easy" | "medium" | "hard";
@@ -217,7 +214,15 @@ export async function generateQuizzes(
     }
 
     const data = await response.json();
-    return data.quizzes;
+    const rawQuizzes = Array.isArray(data.quizzes) ? data.quizzes : [];
+    const { quizzes } = normalizeGeneratedQuizzes(rawQuizzes, {
+      category: options?.category || "一般",
+      difficulty: options?.difficulty || "medium",
+    });
+    if (quizzes.length === 0) {
+      throw new Error("保存可能なクイズが生成されませんでした。条件を変えて再生成してください。");
+    }
+    return quizzes;
   } catch (error) {
     console.error("クイズ生成中にエラーが発生しました:", error);
     throw error;

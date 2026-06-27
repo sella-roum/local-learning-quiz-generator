@@ -51,6 +51,10 @@ import {
 import { cn } from "@/lib/utils";
 import { db, type FileItem, type Quiz } from "@/lib/db";
 import { generateQuizzes, type GenerateQuiz } from "@/lib/api-utils";
+import {
+  normalizeGeneratedQuizzes,
+  normalizeGeneratedQuiz,
+} from "@/lib/quiz-normalizer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -171,23 +175,47 @@ export default function CreateQuizPage() {
         fileName: file.name,
       }));
 
-      setGeneratedQuizzes(quizzesWithFileInfo);
-      setQuizzesToSave(quizzesWithFileInfo);
+      // 正規化: options を string[] に統一し、不正なデータを除外
+      const { quizzes: normalizedQuizzes, rejectedCount } =
+        normalizeGeneratedQuizzes(quizzesWithFileInfo, {
+          fileId: file.id,
+          fileName: file.name,
+          category:
+            generationOptions.category === "新規カテゴリを作成"
+              ? newCategory
+              : generationOptions.category,
+          difficulty: generationOptions.difficulty,
+        });
 
-      if (quizzesWithFileInfo.length > 0) {
+      if (normalizedQuizzes.length === 0) {
+        setError(
+          "保存可能なクイズが生成されませんでした。条件を変えて再生成してください。"
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      if (rejectedCount > 0) {
+        setError(
+          `生成結果に保存できないクイズが含まれていたため、${rejectedCount}問を除外しました。`
+        );
+      }
+
+      setGeneratedQuizzes(normalizedQuizzes);
+      setQuizzesToSave(normalizedQuizzes);
+
+      if (normalizedQuizzes.length > 0) {
         setCurrentQuizIndex(0);
         setEditedQuiz({
           category:
-            quizzesWithFileInfo[0].category ||
+            normalizedQuizzes[0].category ||
             (generationOptions.category === "新規カテゴリを作成"
               ? newCategory
               : generationOptions.category),
-          question: quizzesWithFileInfo[0].question,
-          options: quizzesWithFileInfo[0].options.map((option) =>
-            option.toString()
-          ),
-          correctOptionIndex: quizzesWithFileInfo[0].correctOptionIndex,
-          explanation: quizzesWithFileInfo[0].explanation || "",
+          question: normalizedQuizzes[0].question,
+          options: [...normalizedQuizzes[0].options],
+          correctOptionIndex: normalizedQuizzes[0].correctOptionIndex,
+          explanation: normalizedQuizzes[0].explanation || "",
         });
         setActiveTab("review");
       }
@@ -213,12 +241,34 @@ export default function CreateQuizPage() {
     try {
       setIsLoading(true);
 
-      // 選択されたクイズをすべて保存
-      const quizzes = quizzesToSave.map((quiz) => ({
+      // 保存前に再度正規化
+      const { quizzes: normalizedQuizzes, rejectedCount } =
+        normalizeGeneratedQuizzes(quizzesToSave, {
+          category:
+            generationOptions.category === "新規カテゴリを作成"
+              ? newCategory
+              : generationOptions.category,
+          difficulty: generationOptions.difficulty,
+        });
+
+      if (normalizedQuizzes.length === 0) {
+        setError("保存可能なクイズがありません。クイズの内容を確認してください。");
+        setIsLoading(false);
+        return;
+      }
+
+      if (rejectedCount > 0) {
+        setError(
+          `一部のクイズは保存できませんでした（${rejectedCount}問）。`
+        );
+      }
+
+      // 正規化済みクイズをDB保存
+      const quizzes = normalizedQuizzes.map((quiz) => ({
         fileId: quiz.fileId,
-        category: quiz.category || generationOptions.category || "",
+        category: quiz.category || "",
         question: quiz.question,
-        options: quiz.options.map((opt) => opt.toString()),
+        options: quiz.options,
         correctOptionIndex: quiz.correctOptionIndex,
         explanation: quiz.explanation || "",
         createdAt: new Date(),
@@ -233,7 +283,7 @@ export default function CreateQuizPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [quizzesToSave, generationOptions.category, router]);
+  }, [quizzesToSave, generationOptions.category, generationOptions.difficulty, newCategory, router]);
 
   // カテゴリ選択の処理
   const handleCategorySelect = (category: string) => {
@@ -276,7 +326,7 @@ export default function CreateQuizPage() {
     setEditedQuiz({
       category: quiz.category || "",
       question: quiz.question,
-      options: quiz.options.map((opt) => opt.toString()),
+      options: [...quiz.options],
       correctOptionIndex: quiz.correctOptionIndex,
       explanation: quiz.explanation || "",
     });
@@ -293,23 +343,29 @@ export default function CreateQuizPage() {
   const saveEditedQuiz = () => {
     if (editingQuizIndex === null) return;
 
-    if (!editedQuiz.question || editedQuiz.options.some((opt) => !opt)) {
-      setError("問題文と全ての選択肢を入力してください");
+    // 編集内容を正規化で検証
+    const rawQuiz = {
+      ...generatedQuizzes[editingQuizIndex],
+      category: editedQuiz.category,
+      question: editedQuiz.question,
+      options: editedQuiz.options.map((option) => option.trim()),
+      correctOptionIndex: editedQuiz.correctOptionIndex,
+      explanation: editedQuiz.explanation,
+    };
+
+    const { quiz: normalized } = normalizeGeneratedQuiz(rawQuiz, {
+      difficulty: generationOptions.difficulty,
+    });
+
+    if (!normalized) {
+      setError(
+        "編集内容に不備があります。問題文、4つの選択肢、正解を確認してください。"
+      );
       return;
     }
 
     const updatedQuizzes = [...generatedQuizzes];
-    updatedQuizzes[editingQuizIndex] = {
-      ...updatedQuizzes[editingQuizIndex],
-      category: editedQuiz.category,
-      question: editedQuiz.question,
-      options: editedQuiz.options.map((option) => ({
-        text: option,
-        isCorrect: false,
-      })),
-      correctOptionIndex: editedQuiz.correctOptionIndex,
-      explanation: editedQuiz.explanation,
-    };
+    updatedQuizzes[editingQuizIndex] = normalized;
 
     setGeneratedQuizzes(updatedQuizzes);
 
@@ -320,7 +376,7 @@ export default function CreateQuizPage() {
         (q) => q === generatedQuizzes[editingQuizIndex]
       );
       if (saveIndex !== -1) {
-        updatedSaveQuizzes[saveIndex] = updatedQuizzes[editingQuizIndex];
+        updatedSaveQuizzes[saveIndex] = normalized;
         setQuizzesToSave(updatedSaveQuizzes);
       }
     }
@@ -784,7 +840,7 @@ export default function CreateQuizPage() {
                                               )}
                                               .
                                             </span>
-                                            <span>{option.toString()}</span>
+                                            <span>{option}</span>
                                             {optIndex ===
                                               quiz.correctOptionIndex && (
                                               <Check className="ml-auto h-4 w-4 text-green-600" />
