@@ -56,6 +56,11 @@ import {
   normalizeGeneratedQuizzes,
   normalizeGeneratedQuiz,
 } from "@/lib/quiz-normalizer";
+import {
+  distributeQuizCount,
+  trimQuizzesToCount,
+} from "@/lib/quiz-generation";
+import { checkQuizQuality } from "@/lib/quiz-quality";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -95,6 +100,7 @@ export default function CreateMultiQuizPage() {
   const [quizzesToSave, setQuizzesToSave] = useState<GenerateQuiz[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [editingQuizIndex, setEditingQuizIndex] = useState<number | null>(null);
+  const [qualityWarning, setQualityWarning] = useState<string | null>(null);
 
   // 既存のカテゴリを取得
   const categories = useLiveQuery(async () => {
@@ -144,16 +150,17 @@ export default function CreateMultiQuizPage() {
       let totalRejected = 0;
 
       // 各ファイルに割り振る問題数を計算
-      const baseQuizCount = Math.floor(generationOptions.count / files.length);
-      const extraQuizCount = generationOptions.count % files.length;
+      const quizCountsByFile = distributeQuizCount(
+        generationOptions.count,
+        files.length
+      );
 
       // 各ファイルからクイズを生成
       for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
         const file = files[fileIndex];
-        const quizCountForFile =
-          baseQuizCount + (fileIndex < extraQuizCount ? 1 : 0);
+        const quizCountForFile = quizCountsByFile[fileIndex] ?? 0;
 
-        if (quizCountForFile === 0) {
+        if (quizCountForFile <= 0) {
           continue;
         }
 
@@ -216,8 +223,17 @@ export default function CreateMultiQuizPage() {
         });
 
         totalRejected += apiRejectedCount + localRejectedCount;
-        allQuizzes = [...allQuizzes, ...normalizedQuizzes];
+
+        // 割当数を超えた分をトリミング
+        const trimmedForFile = trimQuizzesToCount(
+          normalizedQuizzes,
+          quizCountForFile
+        );
+        allQuizzes = [...allQuizzes, ...trimmedForFile];
       }
+
+      // 全体でも最大数を超えないようにトリミング
+      allQuizzes = trimQuizzesToCount(allQuizzes, generationOptions.count);
 
       if (allQuizzes.length === 0) {
         setError(
@@ -230,6 +246,12 @@ export default function CreateMultiQuizPage() {
       if (totalRejected > 0) {
         setError(
           `生成結果に保存できないクイズが含まれていたため、${totalRejected}問を除外しました。`
+        );
+      }
+
+      if (allQuizzes.length < generationOptions.count) {
+        setError(
+          `指定した${generationOptions.count}問のうち、保存可能なクイズは${allQuizzes.length}問でした。不足分はAI応答形式または品質チェックにより除外されました。`
         );
       }
 
@@ -307,6 +329,28 @@ export default function CreateMultiQuizPage() {
         );
         setIsLoading(false);
         return;
+      }
+
+      // 保存前品質チェック
+      setQualityWarning(null);
+      const qualityReports = normalizedQuizzes.map((q) =>
+        checkQuizQuality(q)
+      );
+      const errorReports = qualityReports.filter((r) => r.hasErrors);
+      const warningReports = qualityReports.filter((r) => r.hasWarnings);
+
+      if (errorReports.length > 0) {
+        setError(
+          "保存できないクイズがあります。問題文、選択肢、正解番号を確認してください。"
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      if (warningReports.length > 0) {
+        setQualityWarning(
+          `${warningReports.length}問に品質上の注意があります。例: 解説なし、問題文が短すぎる`
+        );
       }
 
       // 正規化済みクイズをDB保存
@@ -414,6 +458,19 @@ export default function CreateMultiQuizPage() {
       return;
     }
 
+    // 編集内容の品質チェック
+    setQualityWarning(null);
+    const qualityReport = checkQuizQuality(normalized);
+    if (qualityReport.hasErrors) {
+      setError(
+        "編集内容に不備があります。問題文、4つの選択肢、正解を確認してください。"
+      );
+      return;
+    }
+    if (qualityReport.hasWarnings) {
+      setQualityWarning("保存前に品質上の注意があります。");
+    }
+
     const updatedQuizzes = [...generatedQuizzes];
     updatedQuizzes[editingQuizIndex] = normalized;
 
@@ -452,6 +509,14 @@ export default function CreateMultiQuizPage() {
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>エラー</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {qualityWarning && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>品質チェック</AlertTitle>
+            <AlertDescription>{qualityWarning}</AlertDescription>
           </Alert>
         )}
 
@@ -551,8 +616,8 @@ export default function CreateMultiQuizPage() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        各ファイルから均等に問題を生成します (合計
-                        {generationOptions.count}問)
+                        選択ファイルへできるだけ均等に配分し、合計
+                        {generationOptions.count}問の保存候補を生成します。
                       </p>
                     </div>
 
@@ -591,9 +656,6 @@ export default function CreateMultiQuizPage() {
                               role="combobox"
                               aria-expanded={openCategorySelect}
                               className="w-full justify-between"
-                              onClick={() => {
-                                setOpenCategorySelect(false);
-                              }}
                             >
                               {generationOptions.category ===
                               "新規カテゴリを作成"

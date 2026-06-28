@@ -85,6 +85,12 @@ export function normalizeGeneratedQuiz(
     options.push(normalized);
   }
 
+  // Reject duplicate options (exact match after trim)
+  const uniqueOptions = new Set(options);
+  if (uniqueOptions.size !== options.length) {
+    return { quiz: null, reason: "options contain duplicates" };
+  }
+
   const correctOptionIndex = raw.correctOptionIndex;
   if (
     typeof correctOptionIndex !== "number" ||
@@ -106,12 +112,16 @@ export function normalizeGeneratedQuiz(
       : undefined);
 
   const explanation =
-    typeof raw.explanation === "string" ? raw.explanation : "";
+    typeof raw.explanation === "string" && raw.explanation.trim() !== ""
+      ? raw.explanation.trim()
+      : "解説なし";
 
   const categoryVal =
     typeof raw.category === "string" && raw.category.trim() !== ""
       ? raw.category.trim()
-      : defaults?.category || "一般";
+      : defaults?.category && defaults.category.trim() !== ""
+        ? defaults.category.trim()
+        : "一般";
 
   const difficultyVal =
     typeof raw.difficulty === "string" &&
@@ -119,7 +129,8 @@ export function normalizeGeneratedQuiz(
       ? (raw.difficulty as "easy" | "medium" | "hard")
       : defaults?.difficulty || "medium";
 
-  const keyword = typeof raw.keyword === "string" ? raw.keyword : "";
+  const keyword =
+    typeof raw.keyword === "string" ? raw.keyword.trim() : "";
 
   const id =
     typeof raw.id === "string" && raw.id.trim() !== ""
