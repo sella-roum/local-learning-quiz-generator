@@ -87,11 +87,18 @@
 3.  **環境変数を設定**:
 
     - プロジェクトルートに `.env.local` ファイルを作成します。
-    - Google Gemini API キーを以下の形式で記述します。
+    - 以下の環境変数を設定します。
+
       ```env
       GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+      GEMINI_PRIMARY_MODEL=gemini-2.5-flash-preview-04-17
+      GEMINI_FALLBACK_MODEL=gemini-2.0-flash
+      GEMINI_ENABLE_THINKING=true
+      GEMINI_THINKING_BUDGET=24576
       ```
-      API キーは [Google AI Studio](https://aistudio.google.com/app/apikey) などで取得してください。
+
+    - `GEMINI_API_KEY` は必須です。[Google AI Studio](https://aistudio.google.com/app/apikey) などで取得してください。
+    - その他の変数はオプショナルで、デフォルト値が使用されます。
 
 4.  **開発サーバーを起動**:
 
@@ -104,6 +111,19 @@
     ```
 
 5.  ブラウザで [http://localhost:3000](http://localhost:3000) を開きます。
+
+### 環境変数
+
+| 変数名 | 必須 | デフォルト | 説明 |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | 必須 | なし | Gemini API呼び出しに使用するAPIキー |
+| `GEMINI_PRIMARY_MODEL` | 任意 | `gemini-2.5-flash-preview-04-17` | 最初に試行するGeminiモデル |
+| `GEMINI_FALLBACK_MODEL` | 任意 | `gemini-2.0-flash` | primary失敗時に試行するフォールバックモデル |
+| `GEMINI_ENABLE_THINKING` | 任意 | `true` | primaryモデルでthinkingConfigを有効化するか |
+| `GEMINI_THINKING_BUDGET` | 任意 | `24576` | thinkingConfig.thinkingBudgetに指定する値 |
+| `FRONTEND_URL` | 任意 | `http://localhost:3000` | CORS許可Origin |
+
+`GEMINI_API_KEY` が未設定の場合、AI解析・クイズ生成は実行できず、画面上に「Gemini APIキーが設定されていません」というエラーが表示されます。
 
 ## Development
 

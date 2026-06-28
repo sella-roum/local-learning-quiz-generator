@@ -11,6 +11,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { debugLog, serverErrorLog } from "@/lib/server/safe-logger";
 import { validatePayloadSize } from "@/lib/limits";
+import { getGeminiModelConfig } from "@/lib/server/gemini-config";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
@@ -100,10 +101,13 @@ export async function POST(request: NextRequest) {
     }
 
     // --- APIキー取得 ---
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) {
       let errorResponse = NextResponse.json(
-        { error: "APIキーが設定されていません" },
+        {
+          error: "Gemini APIキーが設定されていません。",
+          code: "GEMINI_API_KEY_MISSING",
+        },
         { status: 500 }
       );
       return setCorsHeaders(errorResponse);
@@ -112,12 +116,9 @@ export async function POST(request: NextRequest) {
     // --- @google/genai クライアント初期化 ---
     const ai = new GoogleGenAI({ apiKey });
 
-    // --- モデルIDリスト ---
-    const modelIdsToTry = [
-      "gemini-2.5-flash-preview-04-17",
-      "gemini-2.0-flash",
-    ];
-    const thinkingModelIds = ["gemini-2.5-flash-preview-04-17"];
+    // --- モデル設定 ---
+    const { modelIdsToTry, enableThinking, thinkingBudget, thinkingModelIds } =
+      getGeminiModelConfig();
 
     // --- responseSchema (クイズ配列用) ---
     const quizSchema: Schema = {
@@ -210,8 +211,8 @@ export async function POST(request: NextRequest) {
           responseMimeType: "application/json",
           responseSchema: quizListSchema,
         };
-        if (thinkingModelIds.includes(modelId)) {
-          generationConfig.thinkingConfig = { thinkingBudget: 24576 };
+        if (enableThinking && thinkingModelIds.includes(modelId)) {
+          generationConfig.thinkingConfig = { thinkingBudget };
         }
 
         const currentResponse = await ai.models.generateContent({
