@@ -46,21 +46,29 @@ async function readApiError(
   response: Response,
   fallbackMessage: string
 ): Promise<Error> {
-  let errorData: ApiErrorResponse = {};
+  let errorData: ApiErrorResponse | null = null;
 
   try {
     errorData = await response.json();
   } catch {
-    return new Error(fallbackMessage);
+    errorData = null;
   }
 
-  if (errorData.code === "GEMINI_API_KEY_MISSING") {
+  if (response.status === 413) {
+    return new Error(
+      "内容が大きすぎます。ファイルサイズまたは本文量を減らしてください。"
+    );
+  }
+
+  if (errorData?.code === "GEMINI_API_KEY_MISSING") {
     return new Error(
       "Gemini APIキーが設定されていません。.env.local に GEMINI_API_KEY を設定してください。"
     );
   }
 
-  return new Error(errorData.error || fallbackMessage);
+  return new Error(
+    errorData?.error || `${fallbackMessage} (HTTP ${response.status})`
+  );
 }
 
 export async function extractKeywordsAndSummary(
@@ -162,6 +170,7 @@ function shouldRethrowUserFacingError(error: unknown): boolean {
     error.message.includes("大きすぎます") ||
     error.message.includes("内容が空です") ||
     error.message.includes("413") ||
+    error.message.includes("内容が大きすぎます") ||
     error.message.includes("Gemini APIキーが設定されていません")
   );
 }

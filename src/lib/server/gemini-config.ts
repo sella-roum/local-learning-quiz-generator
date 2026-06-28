@@ -43,13 +43,26 @@ function parsePositiveIntegerEnv(
     return defaultValue;
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const normalized = value.trim();
 
-  if (!Number.isFinite(parsed) || parsed < 0) {
+  if (!/^\d+$/.test(normalized)) {
+    return defaultValue;
+  }
+
+  const parsed = Number(normalized);
+
+  if (!Number.isSafeInteger(parsed)) {
     return defaultValue;
   }
 
   return parsed;
+}
+
+function supportsThinking(modelId: string): boolean {
+  const normalized = modelId.toLowerCase();
+  return (
+    normalized.startsWith("gemini-2.5") || normalized.includes("thinking")
+  );
 }
 
 export function getGeminiModelConfig(): GeminiModelConfig {
@@ -61,19 +74,23 @@ export function getGeminiModelConfig(): GeminiModelConfig {
     process.env.GEMINI_ENABLE_THINKING,
     true
   );
-  const thinkingBudget = parsePositiveIntegerEnv(
+  const rawThinkingBudget = parsePositiveIntegerEnv(
     process.env.GEMINI_THINKING_BUDGET,
     DEFAULT_THINKING_BUDGET
   );
+  const thinkingBudget =
+    rawThinkingBudget < 1024 ? DEFAULT_THINKING_BUDGET : rawThinkingBudget;
 
   const modelIdsToTry = Array.from(
     new Set([primaryModel, fallbackModel].filter(Boolean))
   );
+  const thinkingModelIds =
+    enableThinking && supportsThinking(primaryModel) ? [primaryModel] : [];
 
   return {
     modelIdsToTry,
     enableThinking,
     thinkingBudget,
-    thinkingModelIds: enableThinking ? [primaryModel] : [],
+    thinkingModelIds,
   };
 }
