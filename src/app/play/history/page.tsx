@@ -79,7 +79,8 @@ export default function HistoryPage() {
         return { ...session, results: sessionResults, score, totalQuestions };
       })
     );
-    return sessionsWithResults;
+    // 完全なセッションのみ表示（endedAtがあり、整合性の取れたもの）
+    return sessionsWithResults.filter((s) => s.endedAt && s.results.length > 0);
   });
 
   // カテゴリの一覧を取得
@@ -95,7 +96,7 @@ export default function HistoryPage() {
   const stats = useLiveQuery(async () => {
     const results = await db.results.toArray();
     const allSessions = await db.sessions.toArray();
-    // 完了したセッションのみをフィルタリング
+    // 完了したセッションのみをフィルタリング（endedAtがあり、結果があるもの）
     const completedSessions = allSessions.filter(
       (session) => session.endedAt && session.startedAt
     );

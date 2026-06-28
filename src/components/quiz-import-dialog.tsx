@@ -30,6 +30,7 @@ import { db } from "@/lib/db";
 import {
   validateImportedJson,
   convertImportedQuizToDbFormat,
+  createQuizDuplicateKey,
   type QuizExportFile,
 } from "@/lib/quiz-export-import";
 import { motion } from "framer-motion";
@@ -153,11 +154,42 @@ export function QuizImportDialog({
         (index) => importedData.quizzes[index]
       );
 
-      // 一つずつデータベースに追加
+      // 既存の全クイズのキーを事前に取得（重複検知用）
+      const existingQuizzes = await db.quizzes.toArray();
+      const existingKeys = new Set(
+        existingQuizzes.map((q) =>
+          createQuizDuplicateKey({
+            question: q.question,
+            options: q.options,
+            correctOptionIndex: q.correctOptionIndex,
+          })
+        )
+      );
+
+      let addedCount = 0;
+      let skippedDuplicateCount = 0;
+      let rejectedCount = 0;
+
+      // 一つずつデータベースに追加（重複チェック付き）
       for (let i = 0; i < selectedQuizzes.length; i++) {
         const quiz = selectedQuizzes[i];
+        const key = createQuizDuplicateKey({
+          question: quiz.question,
+          options: quiz.options,
+          correctOptionIndex: quiz.correctOptionIndex,
+        });
+
+        if (existingKeys.has(key)) {
+          skippedDuplicateCount++;
+          continue;
+        }
+
         const dbQuiz = convertImportedQuizToDbFormat(quiz);
         await db.quizzes.add(dbQuiz);
+        addedCount++;
+
+        // インポートしたクイズのキーも既存セットに追加（同一ファイル内の重複も防止）
+        existingKeys.add(key);
 
         // 進捗を更新
         setImportProgress(Math.round(((i + 1) / selectedQuizzes.length) * 100));
@@ -166,11 +198,23 @@ export function QuizImportDialog({
       setIsImportComplete(true);
       onImportComplete();
 
-      // 少し待ってからダイアログを閉じる
+      // 結果を表示（少し待ってから閉じる）
       setTimeout(() => {
         onOpenChange(false);
+        // インポート結果を表示するために短いメッセージを設定
+        if (skippedDuplicateCount > 0 || rejectedCount > 0) {
+          setError(null);
+        }
         resetForm();
       }, 1500);
+
+      // 結果の概要を表示するため、完了メッセージに詳細を含める
+      if (skippedDuplicateCount > 0 || rejectedCount > 0) {
+        // set a brief message that will be cleared on dialog close
+        setError(
+          `インポート完了: 追加 ${addedCount}件 / 重複スキップ ${skippedDuplicateCount}件 / 不正データ ${rejectedCount}件`
+        );
+      }
     } catch (error) {
       console.error("インポート中にエラーが発生しました:", error);
       setError(
@@ -294,6 +338,11 @@ export function QuizImportDialog({
                   <p className="text-sm text-muted-foreground mt-2">
                     {selectedQuizIndices.size}問のクイズがインポートされました
                   </p>
+                  {error && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {error}
+                    </p>
+                  )}
                 </motion.div>
               ) : isLoading ? (
                 <div className="space-y-4 py-4">

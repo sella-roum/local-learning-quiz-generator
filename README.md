@@ -8,156 +8,165 @@
 
 ローカルにあるテキスト、画像、PDF ファイルから AI が自動で 4 択クイズを作成し、ブラウザ上で学習できる Web アプリケーションです。
 
-## 概要
+## Features
 
-このアプリケーションを使用すると、お手持ちの学習資料をアップロードするだけで、AI（Google Gemini）が内容を解析し、関連するクイズを自動生成します。生成されたクイズはブラウザのローカルストレージ (IndexedDB) に保存され、いつでも学習セッションを開始できます。
+- **File upload**: Upload text (.txt), image (.jpg, .jpeg, .png), and PDF (.pdf) files
+- **URL content fetching**: Fetch content from URLs using Jina Reader
+- **AI content analysis**: Extract keywords, summaries, and structure via Google Gemini
+- **AI quiz generation**: Generate 4-choice quizzes with configurable count, difficulty, and category
+- **Single/multi file quiz creation**: Create quizzes from one file or multiple files at once
+- **Quiz management**: View, search, filter, edit, and delete quizzes
+- **Quiz play**: Timed quiz sessions with category selection
+- **Learning history**: Session history with stats and per-question results
+- **Import/Export**: Quiz data in JSON format
+- **PWA support**: Offline quiz browsing and study (AI features require network)
+- **Theme switching**: Light and dark mode
 
-## 主な機能
+## Input Support
 
-- **ファイルアップロード**: テキスト (.txt)、画像 (.jpg, .jpeg, .png)、PDF (.pdf) ファイルをアップロードできます。
-- **AI による内容解析**: アップロードされたファイルの内容を AI が解析し、重要なキーワード、概要、構成を抽出します。
-- **AI クイズ生成**: ファイルの内容や抽出された情報に基づき、指定した条件（問題数、難易度、カテゴリなど）で 4 択クイズを自動生成します。単一ファイルまたは複数ファイルからまとめて生成可能です。
-- **クイズ管理**: 生成されたクイズの一覧表示、検索、カテゴリフィルタリング、編集、削除が可能です。
-- **クイズプレイ**: カテゴリ、問題数、制限時間を選択してクイズセッションを開始できます。回答の正誤判定と解説表示機能があります。
-- **学習履歴**: 過去のクイズセッションの結果や統計（正答率推移、総合成績など）を確認できます。
-- **インポート/エクスポート**: クイズデータを JSON 形式でエクスポートしたり、他の環境からインポートしたりできます。
-- **PWA 対応**: オフラインでの利用や、デバイスのホーム画面への追加が可能です。
-- **テーマ切り替え**: ライトモードとダークモードを切り替えられます。
-- **操作説明**: アプリケーション内で操作方法を確認できます。
+| Input Type | Supported | Notes |
+|---|---|---|
+| Text (.txt) | ✅ | Direct text content |
+| PDF (.pdf) | ✅ | Sent directly to Gemini as `inlineData` — no local PDF.js extraction |
+| Image (.jpg, .jpeg, .png) | ✅ | Sent as base64 to Gemini |
+| URL | ✅ | Content fetched via Jina Reader, then processed as text |
 
-## 技術スタック
+## How It Works
 
-- **フレームワーク**: [Next.js](https://nextjs.org/) (App Router)
-- **言語**: [TypeScript](https://www.typescriptlang.org/)
-- **UI**:
-  - [Tailwind CSS](https://tailwindcss.com/)
-  - [shadcn/ui](https://ui.shadcn.com/) (Radix UI + Tailwind CSS)
-  - [Lucide React](https://lucide.dev/) (アイコン)
-  - [Framer Motion](https://www.framer.com/motion/) (アニメーション)
-  - [Recharts](https://recharts.org/) (チャート)
-- **状態管理**: React Hooks, [Dexie React Hooks](https://dexie.org/docs/dexie-react-hooks/intro)
-- **データ永続化**: IndexedDB ([Dexie.js](https://dexie.org/))
-- **PDF 処理**: Gemini API へ `application/pdf` の inlineData として直接送信
+1. **Upload files** or **fetch URL content** → stored in browser IndexedDB
+2. **AI extracts** keywords, summary, and structure (Gemini API)
+3. **You configure** quiz options (count, difficulty, category, prompt)
+4. **AI generates** 4-choice quizzes (Gemini API)
+5. **You review and edit** quizzes before saving
+6. **Quiz data is saved** to IndexedDB
+7. **You play quizzes** in timed sessions
+8. **Results are tracked** with per-question feedback
+
+## External Services
+
+| Service | Purpose | Data Sent |
+|---|---|---|
+| Google Gemini API | Keyword extraction, summary, quiz generation | File contents, extracted metadata |
+| Jina Reader (`r.jina.ai`) | URL content fetching | URL, page content |
+
+### PDF Processing Policy
+
+PDF files are **not** parsed locally. They are sent directly to the Gemini API as `application/pdf` inlineData. This means:
+- PDF content always leaves your browser
+- Do not upload confidential or sensitive PDFs
+- Maximum PDF file size: 14MB (post-base64 fits within Gemini's 20MB inline limit)
+
+### File Deletion Policy
+
+When a file is deleted from IndexedDB, quizzes that were generated from that file are **not** deleted. They remain available for study and are marked as "元ファイル削除済み" (original file deleted) in the quiz list.
+
+## Data Storage
+
+All data is stored locally in your browser's IndexedDB:
+- Uploaded file contents (as Blobs)
+- Generated quizzes
+- Quiz play results and session history
+
+No data is stored on external servers. The external APIs (Gemini, Jina Reader) process data in transit but do not retain it.
+
+## Local Development
+
+### Prerequisites
+
+- Node.js 22 (recommended)
+- A Google Gemini API key ([Google AI Studio](https://aistudio.google.com/app/apikey))
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/sella-roum/local-learning-quiz-generator.git
+cd local-learning-quiz-generator
+
+# Install dependencies
+npm ci
+
+# Set up environment variables
+cp .env.example .env.local
+# Then edit .env.local and set your GEMINI_API_KEY
+```
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Yes | — | Gemini API key (set in `.env.local`) |
+| `FRONTEND_URL` | No | `http://localhost:3000` | CORS allowed origin |
+| `ACCESS_CONTROL_ALLOW_ORIGIN` | No | `http://localhost:3000` | Legacy CORS override (FRONTEND_URL takes precedence) |
+| `GEMINI_PRIMARY_MODEL` | No | `gemini-2.0-flash` | Primary Gemini model |
+| `GEMINI_FALLBACK_MODEL` | No | (empty) | Fallback model (built-in list used if empty) |
+| `GEMINI_ENABLE_THINKING` | No | `false` | Enable thinking config |
+| `GEMINI_THINKING_BUDGET` | No | `0` | Thinking budget (0 = disabled) |
+
+### Commands
+
+```bash
+# Development server
+npm run dev
+
+# Type check
+npm run typecheck
+
+# Lint
+npm run lint
+
+# Unit tests
+npm run test:unit
+
+# E2E tests (requires Playwright browsers: npx playwright install)
+npm run test:e2e
+
+# Full check (typecheck + lint + tests + build)
+npm run check
+
+# Production build
+npm run build
+
+# Production start
+npm start
+```
+
+### PWA Limitations
+
+The PWA works offline for browsing and studying existing quizzes, but AI-powered features (quiz generation, keyword extraction) require network access to the Gemini API.
+
+## Project Architecture
+
+See the following docs for detailed information:
+
+- [Architecture](docs/architecture.md) — Directory structure, data flow, API routes
+- [Data Model](docs/data-model.md) — IndexedDB schema, date handling, migration policy
+- [Security and Privacy](docs/security-and-privacy.md) — Data storage, external transmission, logging
+- [Maintenance](docs/maintenance.md) — Dependencies, CI/CD, testing
+
+## Input Limits
+
+| Input Type | Limit |
+|---|---|
+| Text content | 100,000 characters |
+| URL content | 100,000 characters |
+| PDF file | ~20MB (pre-base64) |
+| Image file | ~10MB (pre-base64) |
+
+These limits apply before data is sent to the Gemini API. They are separate from IndexedDB storage limits.
+
+## Tech Stack
+
+- **Framework**: [Next.js](https://nextjs.org/) (App Router)
+- **Language**: [TypeScript](https://www.typescriptlang.org/) (strict mode)
+- **UI**: [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/)
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **Animation**: [Framer Motion](https://www.framer.com/motion/)
+- **Charts**: [Recharts](https://recharts.org/)
+- **Database**: [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) via [Dexie.js](https://dexie.org/)
 - **AI**: [Google Gemini API](https://ai.google.dev/) (`@google/genai`)
 - **PWA**: [next-pwa](https://github.com/shadowwalker/next-pwa)
-- **その他**: clsx, tailwind-merge, date-fns, uuid, react-markdown, canvas-confetti, next-themes
 
-## ディレクトリ構成の概要
+## License
 
-```
-/
-├── public/              # 静的ファイル (画像, manifest.json, sw.js など)
-├── src/
-│   ├── app/             # Next.js App Router
-│   │   ├── api/         # API ルートハンドラ (Gemini連携など)
-│   │   ├── (pages)/     # 各ページのコンポーネント (files, quizzes, play など)
-│   │   ├── layout.tsx   # ルートレイアウト
-│   │   ├── page.tsx     # ホームページ
-│   │   └── globals.css  # グローバルCSS
-│   ├── components/      # 再利用可能なコンポーネント
-│   │   ├── ui/          # shadcn/ui コンポーネント
-│   │   └── (specific)/  # アプリケーション固有コンポーネント (FileUpload, FileList など)
-│   ├── lib/             # ユーティリティ、DB設定、API連携など
-│   └── [...slug]/page.tsx # 未定義ルートのキャッチ
-├── next.config.mjs      # Next.js 設定 (PWA含む)
-├── tailwind.config.ts   # Tailwind CSS 設定
-├── tsconfig.json        # TypeScript 設定
-└── package.json         # 依存関係など
-```
-
-## セットアップと実行
-
-1.  **リポジトリをクローン**:
-
-    ```bash
-    git clone https://github.com/sella-roum/local-learning-quiz-generator.git
-    cd local-learning-quiz-generator
-    ```
-
-2.  **依存関係をインストール**:
-
-    ```bash
-    npm install
-    # または
-    yarn install
-    # または
-    pnpm install
-    ```
-
-3.  **環境変数を設定**:
-
-    - プロジェクトルートに `.env.local` ファイルを作成します。
-    - 以下の環境変数を設定します。
-
-      ```env
-      GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-      GEMINI_PRIMARY_MODEL=gemini-2.5-flash-preview-04-17
-      GEMINI_FALLBACK_MODEL=gemini-2.0-flash
-      GEMINI_ENABLE_THINKING=true
-      GEMINI_THINKING_BUDGET=24576
-      ```
-
-    - `GEMINI_API_KEY` は必須です。[Google AI Studio](https://aistudio.google.com/app/apikey) などで取得してください。
-    - その他の変数はオプショナルで、デフォルト値が使用されます。
-
-4.  **開発サーバーを起動**:
-
-    ```bash
-    npm run dev
-    # または
-    yarn dev
-    # または
-    pnpm dev
-    ```
-
-5.  ブラウザで [http://localhost:3000](http://localhost:3000) を開きます。
-
-### 環境変数
-
-| 変数名 | 必須 | デフォルト | 説明 |
-| --- | --- | --- | --- |
-| `GEMINI_API_KEY` | 必須 | なし | Gemini API呼び出しに使用するAPIキー |
-| `GEMINI_PRIMARY_MODEL` | 任意 | `gemini-2.5-flash-preview-04-17` | 最初に試行するGeminiモデル |
-| `GEMINI_FALLBACK_MODEL` | 任意 | `gemini-2.0-flash` | primary失敗時に試行するフォールバックモデル |
-| `GEMINI_ENABLE_THINKING` | 任意 | `true` | primaryモデルでthinkingConfigを有効化するか |
-| `GEMINI_THINKING_BUDGET` | 任意 | `24576` | thinkingConfig.thinkingBudgetに指定する値 |
-| `FRONTEND_URL` | 任意 | `http://localhost:3000` | CORS許可Origin |
-
-`GEMINI_API_KEY` が未設定の場合、AI解析・クイズ生成は実行できず、画面上に「Gemini APIキーが設定されていません」というエラーが表示されます。
-
-## Development
-
-1. Copy `.env.example` to `.env.local`.
-2. Set `GEMINI_API_KEY` in `.env.local`.
-3. Use Node.js 22.
-4. Install dependencies with `npm ci`.
-5. Run `npm run check` before opening a pull request.
-
-## Development and operation notice
-
-- **IndexedDB storage**: Files you upload and generated quiz data are stored in your browser's IndexedDB, not on any server.
-- **External AI API**: Keyword extraction, summary generation, and quiz creation send file contents (text, images, PDFs) to the Google Gemini API. Do not upload files containing confidential, personal, or proprietary information.
-- **URL content fetching**: When fetching content from a URL, the URL and page content are sent to an external service (Jina Reader). Do not input URLs for confidential or authenticated pages.
-
-## AI解析の入力上限
-
-AI解析・クイズ生成の安定性とコスト管理のため、以下の上限を設けています。
-
-| 入力種別 | 上限 |
-| --- | ---: |
-| テキスト本文 | 100,000文字 |
-| URL取得本文 | 100,000文字 |
-| PDFファイル | 20MiB目安 |
-| 画像ファイル | 10MiB目安 |
-
-上限を超える入力は、AI APIへ送信される前にエラーになります。IndexedDB保存容量の管理とは別の制限です。
-
-PDF/画像の上限はアップロード元ファイルサイズを基準にしています。API送信時にはBase64化されるため、送信payloadは元ファイルより大きくなります。
-
-## 注意事項
-
-- **API キー**: このアプリケーションは Google Gemini API を使用します。API キーを `.env.local` ファイルに設定する必要があります。
-- **機密情報**: ファイルの解析やクイズ生成には Gemini API が使用されます。AI モデルの学習データとして利用される可能性があるため、**機密情報や個人情報を含むファイルはアップロードしないでください**。
-- **データ保存**: ファイル情報、クイズデータ、学習履歴はすべてお使いのブラウザの **IndexedDB** に保存されます。他のブラウザやデバイスとは共有されません。データを移行する場合は、エクスポート/インポート機能を使用してください。
-- **外部送信**: ファイル内容（テキスト、画像、PDF）はキーワード抽出・要約生成・クイズ作成時に Google Gemini API へ送信されます。URL取得時は入力したURLやページ内容が Jina Reader へ送信されます。
-- **PDF 処理**: PDFはブラウザ上でテキスト抽出せず、Gemini APIへ `application/pdf` の `inlineData` として直接送信します。PDFの内容は外部APIへ送信されるため、機密情報・個人情報・社外秘資料を含むPDFはアップロードしないでください。
+MIT

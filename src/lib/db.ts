@@ -49,6 +49,23 @@ export interface Session {
   results?: Result[]; // 追加: Session型に results プロパティを定義
 }
 
+/**
+ * DB schema history
+ *
+ * v1 (initial):
+ * - Initial local quiz database with basic stores
+ *
+ * v2 (current):
+ * - files / quizzes / results / sessions stores
+ * - quiz.category, session.category, session.totalQuestions are used by current UI
+ *
+ * Migration policy:
+ * - Do not mutate existing user data without an explicit migration plan.
+ * - Prefer adding safe optional fields over destructive schema changes.
+ * - Repair of legacy invalid quiz data must be implemented as a separate task.
+ * - When adding a new version, document what changed and why.
+ */
+
 // Dexieデータベースクラスの拡張
 class QuizDatabase extends Dexie {
   files!: Table<FileItem, number>;
@@ -81,35 +98,70 @@ export async function isDatabaseAvailable(): Promise<boolean> {
   }
 }
 
-// 回答履歴のないセッションを削除する関数
+/**
+ * Cleans up abandoned sessions.
+ *
+ * Conditions for removal:
+ * - No results AND no endedAt (never started or abandoned before any answer)
+ * - totalQuestions set but actual results count differs AND no endedAt (incomplete)
+ *
+ * Sessions that have endedAt set are never removed, even if result count differs.
+ * For incomplete but ended sessions, use getSessionIntegrity() to detect and
+ * handle on the UI side instead.
+ */
 export async function cleanupEmptySessions(): Promise<void> {
+  if (process.env.NODE_ENV === "production") {
+    // In production, skip verbose logging; just run cleanup silently.
+    try {
+      const sessions = await db.sessions.toArray();
+      for (const session of sessions) {
+        const resultCount = await db.results
+          .where("sessionId")
+          .equals(session.id!)
+          .count();
+        if (
+          (resultCount === 0 && session.endedAt === undefined) ||
+          (session.totalQuestions !== undefined &&
+            resultCount !== session.totalQuestions &&
+            session.endedAt === undefined)
+        ) {
+          await db.sessions.delete(session.id!);
+        }
+      }
+    } catch {
+      // Silent in production
+    }
+    return;
+  }
+
   try {
-    console.log("🧹 空のセッションレコードのクリーンアップを開始します...");
+    console.log("🧹 Cleaning up empty session records...");
     const sessions = await db.sessions.toArray();
 
+    let removedCount = 0;
     for (const session of sessions) {
       const resultCount = await db.results
         .where("sessionId")
         .equals(session.id!)
         .count();
-      // **問題数と回答数が一致しないセッションも削除対象に追加**
+      // Condition: no results + no endedAt, OR totalQuestions mismatch + no endedAt
       if (
         (resultCount === 0 && session.endedAt === undefined) ||
         (session.totalQuestions !== undefined &&
           resultCount !== session.totalQuestions &&
           session.endedAt === undefined)
       ) {
-        console.log(
-          `🗑️ セッションID: ${session.id} を削除します (回答履歴なし、または問題数と回答数不一致)`
-        );
         await db.sessions.delete(session.id!);
+        removedCount++;
       }
     }
-    console.log("✅ 空のセッションレコードのクリーンアップが完了しました。");
+    if (removedCount > 0) {
+      console.log(`Cleaned up ${removedCount} empty/incomplete session(s).`);
+    }
   } catch (error) {
     console.error(
-      "🚨 空のセッションレコードのクリーンアップ中にエラーが発生しました:",
-      error
+      "Failed to clean up empty session records:",
+      error instanceof Error ? error.message : error
     );
   }
 }

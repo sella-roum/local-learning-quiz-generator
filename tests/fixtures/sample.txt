@@ -1,0 +1,8 @@
+This is a sample text file for testing purposes.
+
+It contains multiple paragraphs that can be used to test
+the quiz generation feature.
+
+The Earth is the third planet from the Sun and the only
+astronomical object known to harbor life. About 71% of
+the planet's surface is covered by water, mostly by oceans.

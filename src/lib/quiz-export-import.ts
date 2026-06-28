@@ -16,6 +16,13 @@ export interface QuizExportFile {
   quizzes: ExportedQuiz[];
 }
 
+// インポート結果
+export interface QuizImportResult {
+  addedCount: number;
+  skippedDuplicateCount: number;
+  rejectedCount: number;
+}
+
 // 現在のエクスポートバージョン
 export const EXPORT_VERSION = "1.0";
 
@@ -39,6 +46,21 @@ export function generateExportJson(quizzes: Quiz[]): string {
   };
 
   return JSON.stringify(exportData, null, 2);
+}
+
+/**
+ * Creates a stable key for duplicate detection based on trimmed quiz content.
+ */
+export function createQuizDuplicateKey(input: {
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+}): string {
+  return JSON.stringify({
+    question: input.question.trim(),
+    options: input.options.map((option) => option.trim()),
+    correctOptionIndex: input.correctOptionIndex,
+  });
 }
 
 // JSONファイルをダウンロードする関数

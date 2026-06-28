@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,14 @@ import { FileList } from "@/components/file-list";
 import { UrlContentFetcher } from "@/components/url-content-fetcher";
 import { db, type FileItem } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
-import { AlertCircle, Upload, FileUp, Trash2, Globe } from "lucide-react";
+import {
+  AlertCircle,
+  Upload,
+  FileUp,
+  Trash2,
+  Globe,
+  HardDrive,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { motion } from "framer-motion";
 import {
@@ -22,16 +29,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  formatBytes,
+  getStoredFilesTotalSize,
+} from "@/lib/storage-usage";
 
 export default function FilesPage() {
   const [error, setError] = useState<string | null>(null);
   const [recentlyUploadedFile, setRecentlyUploadedFile] =
     useState<FileItem | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [totalStorageSize, setTotalStorageSize] = useState<number | null>(null);
   const files = useLiveQuery(() =>
     db.files.orderBy("uploadedAt").reverse().toArray()
   );
   const router = useRouter();
+
+  // 保存済みファイルの合計容量を取得
+  useEffect(() => {
+    getStoredFilesTotalSize().then(setTotalStorageSize).catch(() => {});
+  }, [files]);
 
   // ファイルリストに最新のアップロードファイルを含める
   const allFiles =
@@ -167,6 +184,22 @@ export default function FilesPage() {
                 onDeleteFile={handleDeleteFile}
                 onCreateMultiQuiz={handleCreateMultiQuiz}
               />
+              <Card className="mt-4 bg-muted/30">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <HardDrive className="h-4 w-4" />
+                    <span>
+                      保存済みファイル容量:{" "}
+                      {totalStorageSize !== null
+                        ? formatBytes(totalStorageSize)
+                        : "---"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ファイル本体はブラウザのIndexedDBに保存されます。大量のPDF/画像を保存するとブラウザ容量制限に達する場合があります。
+                  </p>
+                </CardContent>
+              </Card>
             </motion.div>
           ) : (
             <Card className="border-2 border-dashed p-8 text-center">
