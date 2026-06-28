@@ -2,7 +2,7 @@ import {
   normalizeGeneratedQuizzes,
   type GenerateQuizNormalized,
 } from "@/lib/quiz-normalizer";
-import { assertTextWithinLimit, validatePayloadSize, AI_INPUT_LIMITS } from "@/lib/limits";
+import { validatePayloadSize } from "@/lib/limits";
 
 export type GenerateQuiz = GenerateQuizNormalized;
 
@@ -42,9 +42,6 @@ export async function extractKeywordsAndSummary(
   fileContent: string | ArrayBuffer
 ): Promise<{ keywords: string[]; summary: string; structure: string }> {
   try {
-    const formData = new FormData();
-    formData.append("file", file);
-
     // ファイルタイプに応じてリクエストボディを作成
     let requestBody: ExtractKeywordsRequestBody = {
       fileContent: "",
@@ -66,10 +63,29 @@ export async function extractKeywordsAndSummary(
           ? (new TextEncoder().encode(fileContent).buffer as ArrayBuffer)
           : (fileContent as ArrayBuffer)
       );
+
+      if (!base64) {
+        throw new Error(
+          file.type === "application/pdf"
+            ? "PDFファイルの内容が空です"
+            : "画像ファイルの内容が空です"
+        );
+      }
+
       requestBody = {
         fileContent: base64,
         fileType: file.type,
       };
+    }
+
+    // ペイロードサイズ検証 (fetch前に実施)
+    const payloadError = validatePayloadSize(
+      requestBody.fileType,
+      requestBody.fileContent
+    );
+
+    if (payloadError) {
+      throw new Error(payloadError);
     }
 
     // APIを呼び出す
@@ -80,16 +96,6 @@ export async function extractKeywordsAndSummary(
       },
       body: JSON.stringify(requestBody),
     });
-
-    // ファイル内容のサイズを検証
-    if (requestBody.fileType.startsWith("text/")) {
-      assertTextWithinLimit(requestBody.fileContent, AI_INPUT_LIMITS.maxTextChars, "テキスト本文");
-    } else {
-      const payloadError = validatePayloadSize(requestBody.fileType, requestBody.fileContent);
-      if (payloadError) {
-        throw new Error(payloadError);
-      }
-    }
 
     if (!response.ok) {
       const errorData = await response.json();
@@ -106,6 +112,11 @@ export async function extractKeywordsAndSummary(
     };
   } catch (error) {
     console.error("キーワードと概要の抽出中にエラーが発生しました:", error);
+
+    if (shouldRethrowInputError(error)) {
+      throw error;
+    }
+
     // エラーが発生した場合でも最低限の情報を返す
     return {
       keywords: ["エラー", "抽出失敗"],
@@ -113,6 +124,19 @@ export async function extractKeywordsAndSummary(
       structure: "",
     };
   }
+}
+
+function shouldRethrowInputError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.message.includes("長すぎます") ||
+    error.message.includes("大きすぎます") ||
+    error.message.includes("内容が空です") ||
+    error.message.includes("413")
+  );
 }
 
 // クイズを生成するAPI呼び出し
@@ -168,19 +192,19 @@ export async function generateQuizzes(
       requestBody.fileType = file.type;
     }
 
-    // ファイル内容のサイズを検証
-    if (requestBody.fileType?.startsWith("text/")) {
-      assertTextWithinLimit(requestBody.fileContent!, AI_INPUT_LIMITS.maxTextChars, "テキスト本文");
-    } else if (requestBody.fileContent) {
-      const payloadError = validatePayloadSize(requestBody.fileType!, requestBody.fileContent);
-      if (payloadError) {
-        throw new Error(payloadError);
-      }
+    // ファイル内容とタイプの存在検証
+    if (!requestBody.fileContent || !requestBody.fileType) {
+      throw new Error("ファイル内容またはファイルタイプが提供されていません");
     }
 
-    // fileContentが空でないことを確認
-    if (!requestBody.fileContent) {
-      throw new Error("ファイル内容が空です");
+    // ペイロードサイズ検証
+    const payloadError = validatePayloadSize(
+      requestBody.fileType,
+      requestBody.fileContent
+    );
+
+    if (payloadError) {
+      throw new Error(payloadError);
     }
 
     // APIを呼び出す

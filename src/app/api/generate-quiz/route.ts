@@ -81,6 +81,13 @@ export async function POST(request: NextRequest) {
       );
       return setCorsHeaders(errorResponse);
     }
+    if (typeof fileType !== "string" || typeof fileContent !== "string") {
+      let errorResponse = NextResponse.json(
+        { error: "不正なリクエスト形式です" },
+        { status: 400 }
+      );
+      return setCorsHeaders(errorResponse);
+    }
 
     // ペイロードサイズ検証
     const payloadError = validatePayloadSize(fileType, fileContent);
