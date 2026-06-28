@@ -47,7 +47,14 @@ export async function POST(request: NextRequest) {
         [...corsMethods]
       );
     }
-    if (!options || typeof options !== "object") {
+    const generationOptions = options as Record<string, unknown>;
+    if (
+      !options ||
+      typeof options !== "object" ||
+      Array.isArray(options) ||
+      !Number.isInteger(generationOptions.count) ||
+      (generationOptions.count as number) <= 0
+    ) {
       return jsonWithCors(
         { error: "生成オプションが提供されていません" },
         { status: 400 },
@@ -204,7 +211,7 @@ export async function POST(request: NextRequest) {
       })
       .filter((q): q is GeneratedQuiz => q !== null);
 
-    if (generatedQuizzes.length === 0 && generatedQuizzesRaw.length > 0) {
+    if (generatedQuizzes.length === 0) {
       return jsonWithCors(
         { error: "AIからの応答形式が不正です (有効データなし)。" },
         { status: 500 },

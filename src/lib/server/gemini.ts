@@ -38,7 +38,7 @@ function parseGeminiJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
-    const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    const jsonBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (jsonBlockMatch?.[1]) {
       return JSON.parse(jsonBlockMatch[1]);
     }
@@ -64,6 +64,7 @@ export async function generateGeminiJson<T>(
     getGeminiModelConfig();
 
   let geminiResponse: GenerateContentResponse | null = null;
+  let parsedData: unknown = null;
   let lastError: unknown = null;
   let usedModelId = "";
 
@@ -112,6 +113,7 @@ export async function generateGeminiJson<T>(
         }
 
         geminiResponse = currentResponse;
+        parsedData = parsed;
         console.log(`モデル ${modelId} で成功しました。`);
         break;
       } else {
@@ -151,18 +153,11 @@ export async function generateGeminiJson<T>(
     throw new GeminiApiError(
       errorMsg,
       status,
-      blockReason ? "BLOCKED" : "API_COMMUNICATION_ERROR",
-      lastError instanceof Error ? lastError.message : undefined
+      blockReason ? "BLOCKED" : "API_COMMUNICATION_ERROR"
     );
   }
 
-  const resultText = geminiResponse.text;
-
-  let data: T;
-  try {
-    const parsed = parseGeminiJson(resultText);
-    data = parsed as T;
-  } catch {
+  if (parsedData === null) {
     throw new GeminiApiError(
       "AIからの応答形式が不正です (JSONパース失敗)。",
       500,
@@ -170,9 +165,11 @@ export async function generateGeminiJson<T>(
     );
   }
 
+  const data = parsedData as T;
+
   return {
     response: geminiResponse,
-    text: resultText,
+    text: geminiResponse.text,
     data,
     modelId: usedModelId,
   };
@@ -183,14 +180,13 @@ export function toGeminiErrorResponse(error: unknown): {
   status: number;
 } {
   if (error instanceof GeminiApiError) {
-    const body: Record<string, unknown> = {
-      error: error.message,
-      code: error.code,
+    return {
+      body: {
+        error: error.message,
+        code: error.code,
+      },
+      status: error.status,
     };
-    if (error.details) {
-      body.details = error.details;
-    }
-    return { body, status: error.status };
   }
 
   return {
