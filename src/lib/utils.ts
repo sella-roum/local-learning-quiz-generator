@@ -40,3 +40,31 @@ export function formatDate(date: Date): string {
     minute: "2-digit",
   }).format(date);
 }
+
+// --- Date conversion helpers ---
+
+/**
+ * Converts a value (Date, ISO string, number) to a Date object.
+ * Returns null for invalid or unparseable input.
+ */
+export function toDateOrNull(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+}
+
+/**
+ * Converts a value to an ISO string (or null if invalid).
+ * Useful for JSON export where Date objects are not natively supported.
+ */
+export function toIsoStringOrNull(value: unknown): string | null {
+  const date = toDateOrNull(value);
+  return date ? date.toISOString() : null;
+}

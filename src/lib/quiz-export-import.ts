@@ -16,6 +16,13 @@ export interface QuizExportFile {
   quizzes: ExportedQuiz[];
 }
 
+// インポート結果
+export interface QuizImportResult {
+  addedCount: number;
+  skippedDuplicateCount: number;
+  rejectedCount: number;
+}
+
 // 現在のエクスポートバージョン
 export const EXPORT_VERSION = "1.0";
 
@@ -39,6 +46,36 @@ export function generateExportJson(quizzes: Quiz[]): string {
   };
 
   return JSON.stringify(exportData, null, 2);
+}
+
+/**
+ * Creates a stable key for duplicate detection based on trimmed quiz content.
+ *
+ * The input type is deliberately defensive (accepting unknown) because
+ * imported data comes from external JSON files that may contain malformed
+ * fields at runtime. This function will never throw.
+ */
+export function createQuizDuplicateKey(input: {
+  question?: unknown;
+  options?: unknown;
+  correctOptionIndex?: unknown;
+}): string {
+  const question = typeof input.question === "string" ? input.question.trim() : "";
+  const options = Array.isArray(input.options)
+    ? input.options.map((option) =>
+        typeof option === "string" ? option.trim() : ""
+      )
+    : [];
+  const correctOptionIndex =
+    typeof input.correctOptionIndex === "number"
+      ? input.correctOptionIndex
+      : -1;
+
+  return JSON.stringify({
+    question,
+    options,
+    correctOptionIndex,
+  });
 }
 
 // JSONファイルをダウンロードする関数

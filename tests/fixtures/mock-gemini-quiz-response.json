@@ -1,0 +1,16 @@
+{
+  "quizzes": [
+    {
+      "question": "地球は太陽から何番目の惑星ですか？",
+      "options": ["第1惑星", "第2惑星", "第3惑星", "第4惑星"],
+      "correctOptionIndex": 2,
+      "explanation": "地球は太陽から3番目の惑星です。"
+    },
+    {
+      "question": "地球の表面の約何%が水で覆われていますか？",
+      "options": ["50%", "61%", "71%", "81%"],
+      "correctOptionIndex": 2,
+      "explanation": "地球の表面の約71%は水で覆われています。"
+    }
+  ]
+}

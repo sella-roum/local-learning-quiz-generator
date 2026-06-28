@@ -30,6 +30,7 @@ import { db } from "@/lib/db";
 import {
   validateImportedJson,
   convertImportedQuizToDbFormat,
+  createQuizDuplicateKey,
   type QuizExportFile,
 } from "@/lib/quiz-export-import";
 import { motion } from "framer-motion";
@@ -51,6 +52,7 @@ export function QuizImportDialog({
     new Set()
   );
   const [error, setError] = useState<string | null>(null);
+  const [importSummary, setImportSummary] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [isImportComplete, setIsImportComplete] = useState(false);
@@ -141,6 +143,8 @@ export function QuizImportDialog({
 
     try {
       setError(null);
+      setImportSummary(null);
+      setImportProgress(0);
       setIsLoading(true);
 
       if (selectedQuizIndices.size === 0) {
@@ -153,29 +157,81 @@ export function QuizImportDialog({
         (index) => importedData.quizzes[index]
       );
 
-      // 一つずつデータベースに追加
-      for (let i = 0; i < selectedQuizzes.length; i++) {
-        const quiz = selectedQuizzes[i];
-        const dbQuiz = convertImportedQuizToDbFormat(quiz);
-        await db.quizzes.add(dbQuiz);
+      // DB形式に変換（変換失敗を事前にカウントするため）
+      const dbEntries: Array<{ key: string; quiz: ReturnType<typeof convertImportedQuizToDbFormat> }> = [];
+      let conversionFailedCount = 0;
 
-        // 進捗を更新
-        setImportProgress(Math.round(((i + 1) / selectedQuizzes.length) * 100));
+      for (const quiz of selectedQuizzes) {
+        try {
+          const dbQuiz = convertImportedQuizToDbFormat(quiz);
+          const key = createQuizDuplicateKey({
+            question: quiz.question,
+            options: quiz.options,
+            correctOptionIndex: quiz.correctOptionIndex,
+          });
+          dbEntries.push({ key, quiz: dbQuiz });
+        } catch {
+          conversionFailedCount++;
+        }
       }
 
+      setImportProgress(40);
+
+      // 既存の全クイズのキーを事前に取得（重複検知用）
+      const existingQuizzes = await db.quizzes.toArray();
+      const existingKeys = new Set(
+        existingQuizzes.map((q) =>
+          createQuizDuplicateKey({
+            question: q.question,
+            options: q.options,
+            correctOptionIndex: q.correctOptionIndex,
+          })
+        )
+      );
+
+      // 重複チェック（同一ファイル内の重複も防止するために separateKeys を構築）
+      const toAdd: Array<ReturnType<typeof convertImportedQuizToDbFormat>> = [];
+      let duplicateCount = 0;
+      const currentFileKeys = new Set<string>();
+
+      for (const entry of dbEntries) {
+        if (existingKeys.has(entry.key) || currentFileKeys.has(entry.key)) {
+          duplicateCount++;
+          continue;
+        }
+        toAdd.push(entry.quiz);
+        currentFileKeys.add(entry.key);
+      }
+
+      setImportProgress(70);
+
+      // トランザクション内で一括追加
+      if (toAdd.length > 0) {
+        await db.transaction("rw", db.quizzes, async () => {
+          await db.quizzes.bulkAdd(toAdd);
+        });
+      }
+
+      setImportProgress(100);
       setIsImportComplete(true);
+      setImportSummary(
+        `追加 ${toAdd.length}件 / 重複スキップ ${duplicateCount}件` +
+          (conversionFailedCount > 0
+            ? ` / 変換失敗 ${conversionFailedCount}件`
+            : "")
+      );
       onImportComplete();
 
-      // 少し待ってからダイアログを閉じる
+      // 少し待ってから閉じる
       setTimeout(() => {
         onOpenChange(false);
         resetForm();
       }, 1500);
-    } catch (error) {
-      console.error("インポート中にエラーが発生しました:", error);
+    } catch (err) {
+      console.error("インポート中にエラーが発生しました:", err);
       setError(
         "インポート中にエラーが発生しました: " +
-          (error instanceof Error ? error.message : String(error))
+          (err instanceof Error ? err.message : String(err))
       );
     } finally {
       setIsLoading(false);
@@ -188,6 +244,7 @@ export function QuizImportDialog({
     setImportedData(null);
     setSelectedQuizIndices(new Set());
     setError(null);
+    setImportSummary(null);
     setIsLoading(false);
     setImportProgress(0);
     setIsImportComplete(false);
@@ -225,6 +282,13 @@ export function QuizImportDialog({
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>エラー</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {importSummary && (
+          <Alert variant="default" className="border-green-500 bg-green-50 dark:bg-green-950">
+            <Check className="h-4 w-4 text-green-600" />
+            <AlertTitle>インポート完了</AlertTitle>
+            <AlertDescription>{importSummary}</AlertDescription>
           </Alert>
         )}
 
@@ -292,7 +356,7 @@ export function QuizImportDialog({
                   </div>
                   <h3 className="mt-4 text-lg font-semibold">インポート完了</h3>
                   <p className="text-sm text-muted-foreground mt-2">
-                    {selectedQuizIndices.size}問のクイズがインポートされました
+                    {importSummary || `${selectedQuizIndices.size}問のクイズがインポートされました`}
                   </p>
                 </motion.div>
               ) : isLoading ? (

@@ -49,6 +49,23 @@ export interface Session {
   results?: Result[]; // 追加: Session型に results プロパティを定義
 }
 
+/**
+ * DB schema history
+ *
+ * v1 (initial):
+ * - Initial local quiz database with basic stores
+ *
+ * v2 (current):
+ * - files / quizzes / results / sessions stores
+ * - quiz.category, session.category, session.totalQuestions are used by current UI
+ *
+ * Migration policy:
+ * - Do not mutate existing user data without an explicit migration plan.
+ * - Prefer adding safe optional fields over destructive schema changes.
+ * - Repair of legacy invalid quiz data must be implemented as a separate task.
+ * - When adding a new version, document what changed and why.
+ */
+
 // Dexieデータベースクラスの拡張
 class QuizDatabase extends Dexie {
   files!: Table<FileItem, number>;
@@ -81,35 +98,60 @@ export async function isDatabaseAvailable(): Promise<boolean> {
   }
 }
 
-// 回答履歴のないセッションを削除する関数
+/**
+ * Cleans up abandoned sessions.
+ *
+ * Conditions for removal (only no-result, never-started sessions):
+ * - No results AND no endedAt (never started or abandoned before any answer)
+ *
+ * Sessions with totalQuestions mismatch are NOT removed to avoid orphan results.
+ * Use getSessionIntegrity() to detect incomplete sessions and handle them
+ * on the UI side (hide or warn) instead.
+ *
+ * Sessions that have endedAt set are never removed.
+ */
 export async function cleanupEmptySessions(): Promise<void> {
+  const removeSession = async (session: Session): Promise<boolean> => {
+    if (session.endedAt !== undefined) return false;
+    const resultCount = await db.results
+      .where("sessionId")
+      .equals(session.id!)
+      .count();
+    return resultCount === 0;
+  };
+
+  if (process.env.NODE_ENV === "production") {
+    try {
+      const sessions = await db.sessions.toArray();
+      for (const session of sessions) {
+        if (await removeSession(session)) {
+          await db.sessions.delete(session.id!);
+        }
+      }
+    } catch {
+      // Silent in production
+    }
+    return;
+  }
+
   try {
-    console.log("🧹 空のセッションレコードのクリーンアップを開始します...");
+    console.log("Cleaning up empty session records...");
     const sessions = await db.sessions.toArray();
 
+    let removedCount = 0;
     for (const session of sessions) {
-      const resultCount = await db.results
-        .where("sessionId")
-        .equals(session.id!)
-        .count();
-      // **問題数と回答数が一致しないセッションも削除対象に追加**
-      if (
-        (resultCount === 0 && session.endedAt === undefined) ||
-        (session.totalQuestions !== undefined &&
-          resultCount !== session.totalQuestions &&
-          session.endedAt === undefined)
-      ) {
-        console.log(
-          `🗑️ セッションID: ${session.id} を削除します (回答履歴なし、または問題数と回答数不一致)`
-        );
+      if (await removeSession(session)) {
         await db.sessions.delete(session.id!);
+        removedCount++;
       }
     }
-    console.log("✅ 空のセッションレコードのクリーンアップが完了しました。");
+    if (removedCount > 0) {
+      console.log(`Cleaned up ${removedCount} empty session(s).`);
+    }
   } catch (error) {
     console.error(
-      "🚨 空のセッションレコードのクリーンアップ中にエラーが発生しました:",
-      error
+      "Failed to clean up empty session records:",
+      error instanceof Error ? error.message : error
     );
   }
 }

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { db, type Quiz, type Result, type Session } from "@/lib/db";
+import { getSessionIntegrity } from "@/lib/session-integrity";
 import {
   AlertCircle,
   CheckCircle,
@@ -37,6 +38,7 @@ export default function ResultsPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [integrityWarning, setIntegrityWarning] = useState<string | null>(null);
 
   // セッションIDから結果を取得
   useEffect(() => {
@@ -57,6 +59,15 @@ export default function ResultsPage() {
         }
 
         setSession(sessionData);
+
+        // 整合性チェック（前回の警告を必ずクリア）
+        setIntegrityWarning(null);
+        const integrity = await getSessionIntegrity(sessionData);
+        if (integrity.isIncomplete) {
+          setIntegrityWarning(
+            `セッションの結果数(${integrity.resultCount})と予想問題数(${integrity.expectedCount})が一致しません。`
+          );
+        }
 
         // セッションに関連する結果を取得
         const sessionResults = await db.results
@@ -265,6 +276,14 @@ export default function ResultsPage() {
                     カテゴリ: {session.category}
                   </span>
                 </div>
+              )}
+
+              {integrityWarning && (
+                <Alert className="animate-fade-in">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>整合性警告</AlertTitle>
+                  <AlertDescription>{integrityWarning}</AlertDescription>
+                </Alert>
               )}
             </div>
           </CardContent>

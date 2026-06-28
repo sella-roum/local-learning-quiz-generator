@@ -1,44 +1,75 @@
-name: Dependabot auto-approve + auto-merge
+# Dependabot auto-merge workflow
+#
+# Automatically merges Dependabot PRs that meet all safety conditions:
+# - Only patch and minor updates (major updates require manual review)
+# - CI must pass (typecheck, lint, test:unit, build)
+# - Secret DEPENDABOT_MERGE_TOKEN must be set in Dependabot secrets
+#
+# If DEPENDABOT_MERGE_TOKEN is not set in Dependabot secrets, this workflow
+# will skip auto-merge and Dependabot PRs will require manual merge.
+
+name: Dependabot auto-merge
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  pull-requests: write
   contents: write
+  pull-requests: write
 
 jobs:
-  automerge:
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
+  auto-merge:
+    if: >
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:
       - name: Fetch Dependabot metadata
-        id: meta
+        id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
-          github-token: ${{ secrets.DEPENDABOT_MERGE_TOKEN }}
-          alert-lookup: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # レビュー必須にしている場合のみ必要（必須でないならこのStepは削除OK）
-      - name: Approve PR
-        run: gh pr review --approve "$PR_URL"
+      - name: Check if auto-merge is applicable
+        id: check
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.DEPENDABOT_MERGE_TOKEN }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "DEPENDABOT_MERGE_TOKEN is not set. Skipping auto-merge."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-      - name: Enable auto-merge for safe updates
-        if: |
-          (
-            steps.meta.outputs.dependency-type == 'direct:production' &&
-            steps.meta.outputs.update-type == 'version-update:semver-patch'
-          ) || (
-            steps.meta.outputs.dependency-type == 'direct:development' &&
-            (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-             steps.meta.outputs.update-type == 'version-update:semver-minor')
-          )
-        run: gh pr merge --auto --merge "$PR_URL"
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor)
+              echo "Patch/minor update detected. Auto-merge may proceed."
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Update type '$UPDATE_TYPE' is not eligible for auto-merge."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      # Third-party action is pinned because it receives DEPENDABOT_MERGE_TOKEN
+      # which has write capabilities. Tag-based references are not safe here.
+      - name: Wait for CI to succeed
+        if: steps.check.outputs.skip == 'false'
+        id: wait
+        uses: lewagon/wait-on-check-action@ccfb013c15c8afb7bf2b7c028fb74dc5a068cccc # v1.3.4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          repo-token: ${{ secrets.DEPENDABOT_MERGE_TOKEN }}
+          wait-interval: 30
+          running-workflow-name: "Dependabot auto-merge"
+
+      - name: Auto-merge the Dependabot PR
+        if: steps.check.outputs.skip == 'false' && steps.wait.outputs.conclusion == 'success'
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.DEPENDABOT_MERGE_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr merge --auto --squash "$PR_URL"

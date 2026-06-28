@@ -481,7 +481,7 @@ export default function QuizzesPage() {
                             </div>
                           )}
 
-                          {quiz.file && (
+                          {quiz.fileId && quiz.file ? (
                             <div className="text-sm">
                               <span className="font-medium">元ファイル:</span>{" "}
                               <Badge
@@ -491,7 +491,17 @@ export default function QuizzesPage() {
                                 {quiz.file.name}
                               </Badge>
                             </div>
-                          )}
+                          ) : quiz.fileId && !quiz.file ? (
+                            <div className="text-sm">
+                              <span className="font-medium">元ファイル:</span>{" "}
+                              <Badge
+                                variant="outline"
+                                className="ml-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300"
+                              >
+                                元ファイル削除済み
+                              </Badge>
+                            </div>
+                          ) : null}
                         </div>
                       </CardContent>
                       <CardFooter className="flex pt-6 justify-between border-t bg-muted/20">
