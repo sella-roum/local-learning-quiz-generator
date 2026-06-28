@@ -101,30 +101,30 @@ export async function isDatabaseAvailable(): Promise<boolean> {
 /**
  * Cleans up abandoned sessions.
  *
- * Conditions for removal:
+ * Conditions for removal (only no-result, never-started sessions):
  * - No results AND no endedAt (never started or abandoned before any answer)
- * - totalQuestions set but actual results count differs AND no endedAt (incomplete)
  *
- * Sessions that have endedAt set are never removed, even if result count differs.
- * For incomplete but ended sessions, use getSessionIntegrity() to detect and
- * handle on the UI side instead.
+ * Sessions with totalQuestions mismatch are NOT removed to avoid orphan results.
+ * Use getSessionIntegrity() to detect incomplete sessions and handle them
+ * on the UI side (hide or warn) instead.
+ *
+ * Sessions that have endedAt set are never removed.
  */
 export async function cleanupEmptySessions(): Promise<void> {
+  const removeSession = async (session: Session): Promise<boolean> => {
+    if (session.endedAt !== undefined) return false;
+    const resultCount = await db.results
+      .where("sessionId")
+      .equals(session.id!)
+      .count();
+    return resultCount === 0;
+  };
+
   if (process.env.NODE_ENV === "production") {
-    // In production, skip verbose logging; just run cleanup silently.
     try {
       const sessions = await db.sessions.toArray();
       for (const session of sessions) {
-        const resultCount = await db.results
-          .where("sessionId")
-          .equals(session.id!)
-          .count();
-        if (
-          (resultCount === 0 && session.endedAt === undefined) ||
-          (session.totalQuestions !== undefined &&
-            resultCount !== session.totalQuestions &&
-            session.endedAt === undefined)
-        ) {
+        if (await removeSession(session)) {
           await db.sessions.delete(session.id!);
         }
       }
@@ -135,28 +135,18 @@ export async function cleanupEmptySessions(): Promise<void> {
   }
 
   try {
-    console.log("🧹 Cleaning up empty session records...");
+    console.log("Cleaning up empty session records...");
     const sessions = await db.sessions.toArray();
 
     let removedCount = 0;
     for (const session of sessions) {
-      const resultCount = await db.results
-        .where("sessionId")
-        .equals(session.id!)
-        .count();
-      // Condition: no results + no endedAt, OR totalQuestions mismatch + no endedAt
-      if (
-        (resultCount === 0 && session.endedAt === undefined) ||
-        (session.totalQuestions !== undefined &&
-          resultCount !== session.totalQuestions &&
-          session.endedAt === undefined)
-      ) {
+      if (await removeSession(session)) {
         await db.sessions.delete(session.id!);
         removedCount++;
       }
     }
     if (removedCount > 0) {
-      console.log(`Cleaned up ${removedCount} empty/incomplete session(s).`);
+      console.log(`Cleaned up ${removedCount} empty session(s).`);
     }
   } catch (error) {
     console.error(

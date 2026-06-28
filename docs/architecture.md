@@ -12,7 +12,7 @@
 
 ## Directory Structure
 
-```
+```text
 src/
 ├── app/                    # Next.js App Router pages and API routes
 │   ├── api/                # API route handlers
@@ -55,7 +55,7 @@ src/
 
 ### File Upload → Quiz Generation
 
-```
+```text
 User Uploads File
        ↓
 File saved to IndexedDB (files store)
@@ -79,7 +79,7 @@ Save to IndexedDB (quizzes store)
 
 ### Quiz Play → Results
 
-```
+```text
 User selects category / count / time limit
        ↓
 Session created (sessions store)

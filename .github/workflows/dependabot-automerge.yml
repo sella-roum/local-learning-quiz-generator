@@ -25,33 +25,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Check if auto-merge is applicable
         id: check
         env:
           GH_TOKEN: ${{ secrets.DEPENDABOT_MERGE_TOKEN }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
         run: |
-          # If token is not set, skip auto-merge
           if [ -z "$GH_TOKEN" ]; then
             echo "DEPENDABOT_MERGE_TOKEN is not set. Skipping auto-merge."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          PR="${{ github.event.pull_request.title }}"
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor)
+              echo "Patch/minor update detected. Auto-merge may proceed."
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Update type '$UPDATE_TYPE' is not eligible for auto-merge."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
-          # Check if it's a major update — skip auto-merge
-          if echo "$PR" | grep -qi "major"; then
-            echo "Major update detected — skipping auto-merge."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-
+      # Third-party action is pinned because it receives DEPENDABOT_MERGE_TOKEN
+      # which has write capabilities. Tag-based references are not safe here.
       - name: Wait for CI to succeed
         if: steps.check.outputs.skip == 'false'
         id: wait
-        uses: lewagon/wait-on-check-action@v1.3.4
+        uses: lewagon/wait-on-check-action@ccfb013c15c8afb7bf2b7c028fb74dc5a068cccc # v1.3.4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           repo-token: ${{ secrets.DEPENDABOT_MERGE_TOKEN }}

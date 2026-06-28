@@ -14,29 +14,25 @@ test.describe("Home page", () => {
 
   test("should navigate to files page", async ({ page }) => {
     await page.goto("/");
-    // Look for a link or button that leads to /files
     const filesLink = page.getByRole("link", { name: /ファイル/i }).first();
-    if (await filesLink.isVisible()) {
-      await filesLink.click();
-      await expect(page).toHaveURL(/\/files/);
-    }
+    await expect(filesLink).toBeVisible();
+    await filesLink.click();
+    await expect(page).toHaveURL(/\/files/);
   });
 
   test("should navigate to quizzes page", async ({ page }) => {
     await page.goto("/");
     const quizzesLink = page.getByRole("link", { name: /クイズ/i }).first();
-    if (await quizzesLink.isVisible()) {
-      await quizzesLink.click();
-      await expect(page).toHaveURL(/\/quizzes/);
-    }
+    await expect(quizzesLink).toBeVisible();
+    await quizzesLink.click();
+    await expect(page).toHaveURL(/\/quizzes/);
   });
 
   test("should navigate to play page", async ({ page }) => {
     await page.goto("/");
     const playLink = page.getByRole("link", { name: /プレイ|挑戦|play/i }).first();
-    if (await playLink.isVisible()) {
-      await playLink.click();
-      await expect(page).toHaveURL(/\/play/);
-    }
+    await expect(playLink).toBeVisible();
+    await playLink.click();
+    await expect(page).toHaveURL(/\/play/);
   });
 });

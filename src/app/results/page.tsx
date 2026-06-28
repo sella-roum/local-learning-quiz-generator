@@ -60,7 +60,8 @@ export default function ResultsPage() {
 
         setSession(sessionData);
 
-        // 整合性チェック
+        // 整合性チェック（前回の警告を必ずクリア）
+        setIntegrityWarning(null);
         const integrity = await getSessionIntegrity(sessionData);
         if (integrity.isIncomplete) {
           setIntegrityWarning(

@@ -1,4 +1,4 @@
-# Local Learning Quiz Generator (学習クイズジェネレーター)
+# Local Learning Quiz Generator
 
 [![Powered by Next.js](https://img.shields.io/badge/Powered%20by-Next.js-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![Using TypeScript](https://img.shields.io/badge/Using-TypeScript-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
@@ -6,7 +6,7 @@
 [![Components by shadcn/ui](https://img.shields.io/badge/Components-shadcn/ui-black?style=flat)](https://ui.shadcn.com/)
 [![AI by Google Gemini](https://img.shields.io/badge/AI%20by-Google%20Gemini-4285F4?style=flat&logo=google)](https://ai.google.dev/)
 
-ローカルにあるテキスト、画像、PDF ファイルから AI が自動で 4 択クイズを作成し、ブラウザ上で学習できる Web アプリケーションです。
+A web application that automatically creates 4-choice quizzes from local text, image, and PDF files using Google Gemini AI. Quizzes are stored in IndexedDB in the browser.
 
 ## Features
 
@@ -54,7 +54,8 @@
 PDF files are **not** parsed locally. They are sent directly to the Gemini API as `application/pdf` inlineData. This means:
 - PDF content always leaves your browser
 - Do not upload confidential or sensitive PDFs
-- Maximum PDF file size: 14MB (post-base64 fits within Gemini's 20MB inline limit)
+- Maximum PDF file size (upload limit): 14MB pre-base64 (post-base64 fits within Gemini's ~20MB per-request inline limit)
+- The 14MB pre-base64 limit is enforced by the app UI; the Gemini API's inline data limit is approximately 20MB after base64 encoding
 
 ### File Deletion Policy
 
@@ -147,11 +148,11 @@ See the following docs for detailed information:
 ## Input Limits
 
 | Input Type | Limit |
-|---|---|
+|---|---|---|
 | Text content | 100,000 characters |
 | URL content | 100,000 characters |
-| PDF file | ~20MB (pre-base64) |
-| Image file | ~10MB (pre-base64) |
+| PDF file | 14MB (pre-base64; app-enforced upload limit) |
+| Image file | 10MB (pre-base64; app-enforced upload limit) |
 
 These limits apply before data is sent to the Gemini API. They are separate from IndexedDB storage limits.
 

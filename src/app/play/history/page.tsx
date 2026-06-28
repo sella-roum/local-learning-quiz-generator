@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { db } from "@/lib/db";
+import { db, type Session, type Result } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Calendar,
@@ -62,7 +62,8 @@ export default function HistoryPage() {
       .above(0)
       .sortBy("startedAt");
 
-    // セッションごとに results を取得し、正解数(score)と全問題数(totalQuestions)を計算
+    // セッションごとに results を取得し、正解数(score)を計算
+    // session.totalQuestions は上書きせず、expectedTotalQuestions として保持する
     const sessionsWithResults = await Promise.all(
       sessionsData.map(async (session) => {
         const sessionResults = await db.results
@@ -74,13 +75,22 @@ export default function HistoryPage() {
           (total, result) => total + (result.isCorrect ? 1 : 0),
           0
         );
-        // 全問題数（回答結果の数）を計算
-        const totalQuestions = sessionResults.length;
-        return { ...session, results: sessionResults, score, totalQuestions };
+        return {
+          ...session,
+          results: sessionResults,
+          score,
+          actualResultCount: sessionResults.length,
+          expectedTotalQuestions: session.totalQuestions ?? null,
+        };
       })
     );
-    // 完全なセッションのみ表示（endedAtがあり、整合性の取れたもの）
-    return sessionsWithResults.filter((s) => s.endedAt && s.results.length > 0);
+    // 完全なセッションのみ表示（endedAtがあり、expectedTotalQuestionsとactualResultCountが一致するもの）
+    return sessionsWithResults.filter(
+      (s) =>
+        s.endedAt &&
+        s.expectedTotalQuestions !== null &&
+        s.actualResultCount === s.expectedTotalQuestions
+    );
   });
 
   // カテゴリの一覧を取得
@@ -96,21 +106,27 @@ export default function HistoryPage() {
   const stats = useLiveQuery(async () => {
     const results = await db.results.toArray();
     const allSessions = await db.sessions.toArray();
-    // 完了したセッションのみをフィルタリング（endedAtがあり、結果があるもの）
-    const completedSessions = allSessions.filter(
-      (session) => session.endedAt && session.startedAt
-    );
+    // 完全なセッションのみ: endedAtがあり、totalQuestionsとactual result countが一致するもの
+    const completedSessions: Array<{ session: Session; sessionResults: Result[] }> = [];
+
+    for (const session of allSessions) {
+      if (!session.endedAt) continue;
+      const expected = session.totalQuestions ?? null;
+      if (expected === null) continue;
+      const sessionResults = results.filter(
+        (result) => session.id === result.sessionId
+      );
+      if (sessionResults.length !== expected) continue;
+      completedSessions.push({ session, sessionResults });
+    }
+
     const totalSessions = completedSessions.length;
 
     let correctCount = 0;
     let incorrectCount = 0;
     let totalQuestions = 0;
 
-    // 各セッションごとに回答結果を再計算
-    for (const session of completedSessions) {
-      const sessionResults = results.filter(
-        (result) => session.id === result.sessionId
-      );
+    for (const { sessionResults } of completedSessions) {
       const sessionScore = sessionResults.reduce(
         (acc, result) => acc + (result.isCorrect ? 1 : 0),
         0
@@ -128,10 +144,7 @@ export default function HistoryPage() {
       { count: number; score: number; total: number }
     >();
 
-    for (const session of completedSessions) {
-      const sessionResults = results.filter(
-        (result) => session.id === result.sessionId
-      );
+    for (const { session, sessionResults } of completedSessions) {
       const sessionScore = sessionResults.reduce(
         (acc, result) => acc + (result.isCorrect ? 1 : 0),
         0
@@ -149,12 +162,12 @@ export default function HistoryPage() {
     }
 
     const dailyStats = Array.from(sessionsByDate.entries())
-      .map(([date, stats]) => ({
+      .map(([date, currStats]) => ({
         date,
-        count: stats.count,
-        score: stats.score,
-        total: stats.total,
-        accuracy: stats.total > 0 ? (stats.score / stats.total) * 100 : 0,
+        count: currStats.count,
+        score: currStats.score,
+        total: currStats.total,
+        accuracy: currStats.total > 0 ? (currStats.score / currStats.total) * 100 : 0,
       }))
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 7)
@@ -162,7 +175,7 @@ export default function HistoryPage() {
 
     return {
       totalSessions,
-      totalAnswered: totalQuestions, // 完了したセッション全体の回答数
+      totalAnswered: totalQuestions,
       correctCount,
       incorrectCount,
       accuracy,

@@ -46,8 +46,10 @@ describe("generateExportJson", () => {
     const parsed: QuizExportFile = JSON.parse(json);
     expect(parsed.version).toBe("1.0");
     expect(parsed.exportedAt).toBeTypeOf("string");
-    // exportedAt should be an ISO string
-    expect(() => new Date(parsed.exportedAt)).not.toThrow();
+    // exportedAt should be a valid ISO string (parseable and round-trippable)
+    const parsedTs = Date.parse(parsed.exportedAt);
+    expect(Number.isNaN(parsedTs)).toBe(false);
+    expect(new Date(parsedTs).toISOString()).toBe(parsed.exportedAt);
     expect(parsed.quizzes).toHaveLength(1);
     expect(parsed.quizzes[0].question).toBe("Test question?");
   });
@@ -153,5 +155,45 @@ describe("createQuizDuplicateKey", () => {
       correctOptionIndex: 1,
     });
     expect(key1).not.toBe(key2);
+  });
+
+  it("handles undefined options gracefully", () => {
+    const key = createQuizDuplicateKey({
+      question: "Q",
+      options: undefined,
+      correctOptionIndex: 0,
+    });
+    const parsed = JSON.parse(key);
+    expect(parsed.options).toEqual([]);
+  });
+
+  it("handles non-string options elements gracefully", () => {
+    const key = createQuizDuplicateKey({
+      question: "Q",
+      options: [42, true, null] as unknown as string[],
+      correctOptionIndex: 0,
+    });
+    const parsed = JSON.parse(key);
+    expect(parsed.options).toEqual(["", "", ""]);
+  });
+
+  it("handles non-string question gracefully", () => {
+    const key = createQuizDuplicateKey({
+      question: 123 as unknown as string,
+      options: ["A", "B"],
+      correctOptionIndex: 0,
+    });
+    const parsed = JSON.parse(key);
+    expect(parsed.question).toBe("");
+  });
+
+  it("handles non-number correctOptionIndex gracefully", () => {
+    const key = createQuizDuplicateKey({
+      question: "Q",
+      options: ["A", "B"],
+      correctOptionIndex: "0" as unknown as number,
+    });
+    const parsed = JSON.parse(key);
+    expect(parsed.correctOptionIndex).toBe(-1);
   });
 });

@@ -50,16 +50,31 @@ export function generateExportJson(quizzes: Quiz[]): string {
 
 /**
  * Creates a stable key for duplicate detection based on trimmed quiz content.
+ *
+ * The input type is deliberately defensive (accepting unknown) because
+ * imported data comes from external JSON files that may contain malformed
+ * fields at runtime. This function will never throw.
  */
 export function createQuizDuplicateKey(input: {
-  question: string;
-  options: string[];
-  correctOptionIndex: number;
+  question?: unknown;
+  options?: unknown;
+  correctOptionIndex?: unknown;
 }): string {
+  const question = typeof input.question === "string" ? input.question.trim() : "";
+  const options = Array.isArray(input.options)
+    ? input.options.map((option) =>
+        typeof option === "string" ? option.trim() : ""
+      )
+    : [];
+  const correctOptionIndex =
+    typeof input.correctOptionIndex === "number"
+      ? input.correctOptionIndex
+      : -1;
+
   return JSON.stringify({
-    question: input.question.trim(),
-    options: input.options.map((option) => option.trim()),
-    correctOptionIndex: input.correctOptionIndex,
+    question,
+    options,
+    correctOptionIndex,
   });
 }
 

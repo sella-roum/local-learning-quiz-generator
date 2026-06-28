@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,26 +29,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  formatBytes,
-  getStoredFilesTotalSize,
-} from "@/lib/storage-usage";
+import { formatBytes } from "@/lib/storage-usage";
 
 export default function FilesPage() {
   const [error, setError] = useState<string | null>(null);
   const [recentlyUploadedFile, setRecentlyUploadedFile] =
     useState<FileItem | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [totalStorageSize, setTotalStorageSize] = useState<number | null>(null);
   const files = useLiveQuery(() =>
     db.files.orderBy("uploadedAt").reverse().toArray()
   );
   const router = useRouter();
 
-  // 保存済みファイルの合計容量を取得
-  useEffect(() => {
-    getStoredFilesTotalSize().then(setTotalStorageSize).catch(() => {});
-  }, [files]);
+  // 保存済みファイルの合計容量を既存の files 配列から直接算出
+  const totalStorageSize =
+    files?.reduce((total, file) => total + (file.size || 0), 0) ?? null;
 
   // ファイルリストに最新のアップロードファイルを含める
   const allFiles =
