@@ -113,11 +113,26 @@ export async function POST(request: NextRequest) {
       requireJsonObject: true,
     });
 
+    const result = data as Record<string, unknown>;
+
+    if (
+      !Array.isArray(result.keywords) ||
+      !result.keywords.every((keyword) => typeof keyword === "string") ||
+      typeof result.summary !== "string" ||
+      typeof result.structure !== "string"
+    ) {
+      return jsonWithCors(
+        { error: "AIからの応答形式が不正です。" },
+        { status: 500 },
+        [...corsMethods]
+      );
+    }
+
     return jsonWithCors(
       {
-        keywords: (data as Record<string, unknown>)?.keywords || [],
-        summary: (data as Record<string, unknown>)?.summary || "",
-        structure: (data as Record<string, unknown>)?.structure || "",
+        keywords: result.keywords,
+        summary: result.summary,
+        structure: result.structure,
       },
       { status: 200 },
       [...corsMethods]

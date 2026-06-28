@@ -189,7 +189,9 @@ export async function POST(request: NextRequest) {
           typeof quiz.question !== "string" ||
           !Array.isArray(quiz.options) ||
           quiz.options.length !== 4 ||
+          !(quiz.options as unknown[]).every((option) => typeof option === "string") ||
           typeof quiz.correctOptionIndex !== "number" ||
+          !Number.isInteger(quiz.correctOptionIndex) ||
           quiz.correctOptionIndex < 0 ||
           quiz.correctOptionIndex > 3 ||
           typeof quiz.explanation !== "string" ||
@@ -201,12 +203,12 @@ export async function POST(request: NextRequest) {
         return {
           id: uuidv4(),
           question: quiz.question as string,
-          options: (quiz.options as string[]).map(String),
+          options: quiz.options as string[],
           correctOptionIndex: quiz.correctOptionIndex as number,
           explanation: quiz.explanation as string,
           category: (quiz.category as string) || options.category || "一般",
           difficulty: quiz.difficulty as "easy" | "medium" | "hard",
-          keyword: quiz.keyword as string | undefined,
+          keyword: typeof quiz.keyword === "string" ? quiz.keyword : undefined,
         };
       })
       .filter((q): q is GeneratedQuiz => q !== null);
