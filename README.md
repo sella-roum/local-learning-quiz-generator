@@ -37,8 +37,8 @@
   - [Recharts](https://recharts.org/) (チャート)
 - **状態管理**: React Hooks, [Dexie React Hooks](https://dexie.org/docs/dexie-react-hooks/intro)
 - **データ永続化**: IndexedDB ([Dexie.js](https://dexie.org/))
-- **PDF 処理**: [pdfjs-dist](https://mozilla.github.io/pdf.js/)
-- **AI**: [Google Gemini API](https://ai.google.dev/) (`@google/generative-ai`)
+- **PDF 処理**: Gemini API へ `application/pdf` の inlineData として直接送信
+- **AI**: [Google Gemini API](https://ai.google.dev/) (`@google/genai`)
 - **PWA**: [next-pwa](https://github.com/shadowwalker/next-pwa)
 - **その他**: clsx, tailwind-merge, date-fns, uuid, react-markdown, canvas-confetti, next-themes
 
@@ -119,10 +119,25 @@
 - **External AI API**: Keyword extraction, summary generation, and quiz creation send file contents (text, images, PDFs) to the Google Gemini API. Do not upload files containing confidential, personal, or proprietary information.
 - **URL content fetching**: When fetching content from a URL, the URL and page content are sent to an external service (Jina Reader). Do not input URLs for confidential or authenticated pages.
 
+## AI解析の入力上限
+
+AI解析・クイズ生成の安定性とコスト管理のため、以下の上限を設けています。
+
+| 入力種別 | 上限 |
+| --- | ---: |
+| テキスト本文 | 100,000文字 |
+| URL取得本文 | 100,000文字 |
+| PDFファイル | 20MiB目安 |
+| 画像ファイル | 10MiB目安 |
+
+上限を超える入力は、AI APIへ送信される前にエラーになります。IndexedDB保存容量の管理とは別の制限です。
+
+PDF/画像の上限はアップロード元ファイルサイズを基準にしています。API送信時にはBase64化されるため、送信payloadは元ファイルより大きくなります。
+
 ## 注意事項
 
 - **API キー**: このアプリケーションは Google Gemini API を使用します。API キーを `.env.local` ファイルに設定する必要があります。
 - **機密情報**: ファイルの解析やクイズ生成には Gemini API が使用されます。AI モデルの学習データとして利用される可能性があるため、**機密情報や個人情報を含むファイルはアップロードしないでください**。
 - **データ保存**: ファイル情報、クイズデータ、学習履歴はすべてお使いのブラウザの **IndexedDB** に保存されます。他のブラウザやデバイスとは共有されません。データを移行する場合は、エクスポート/インポート機能を使用してください。
 - **外部送信**: ファイル内容（テキスト、画像、PDF）はキーワード抽出・要約生成・クイズ作成時に Google Gemini API へ送信されます。URL取得時は入力したURLやページ内容が Jina Reader へ送信されます。
-- **PDF 処理**: PDF からのテキスト抽出には `pdfjs-dist` を使用しています。複雑なレイアウトや画像ベースの PDF の場合、テキスト抽出が不完全になることがあります。
+- **PDF 処理**: PDFはブラウザ上でテキスト抽出せず、Gemini APIへ `application/pdf` の `inlineData` として直接送信します。PDFの内容は外部APIへ送信されるため、機密情報・個人情報・社外秘資料を含むPDFはアップロードしないでください。

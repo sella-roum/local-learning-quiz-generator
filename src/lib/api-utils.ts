@@ -2,6 +2,7 @@ import {
   normalizeGeneratedQuizzes,
   type GenerateQuizNormalized,
 } from "@/lib/quiz-normalizer";
+import { validatePayloadSize } from "@/lib/limits";
 
 export type GenerateQuiz = GenerateQuizNormalized;
 
@@ -41,9 +42,6 @@ export async function extractKeywordsAndSummary(
   fileContent: string | ArrayBuffer
 ): Promise<{ keywords: string[]; summary: string; structure: string }> {
   try {
-    const formData = new FormData();
-    formData.append("file", file);
-
     // ファイルタイプに応じてリクエストボディを作成
     let requestBody: ExtractKeywordsRequestBody = {
       fileContent: "",
@@ -60,29 +58,34 @@ export async function extractKeywordsAndSummary(
       file.type === "application/pdf" ||
       file.type.startsWith("image/")
     ) {
-      try {
-        // PDFまたは画像ファイルの場合はBase64エンコード
-        const base64 = await arrayBufferToBase64(
-          typeof fileContent === "string"
-            ? // TextEncoder().encode().buffer の結果を ArrayBuffer として型アサーション
-              (new TextEncoder().encode(fileContent).buffer as ArrayBuffer)
-            : (fileContent as ArrayBuffer)
+      const base64 = await arrayBufferToBase64(
+        typeof fileContent === "string"
+          ? (new TextEncoder().encode(fileContent).buffer as ArrayBuffer)
+          : (fileContent as ArrayBuffer)
+      );
+
+      if (!base64) {
+        throw new Error(
+          file.type === "application/pdf"
+            ? "PDFファイルの内容が空です"
+            : "画像ファイルの内容が空です"
         );
-        requestBody = {
-          fileContent: base64,
-          fileType: file.type,
-        };
-      } catch (encodeError) {
-        console.error(
-          "ファイルのエンコード中にエラーが発生しました:",
-          encodeError
-        );
-        // エンコードに失敗した場合は空の内容で続行
-        requestBody = {
-          fileContent: "",
-          fileType: file.type,
-        };
       }
+
+      requestBody = {
+        fileContent: base64,
+        fileType: file.type,
+      };
+    }
+
+    // ペイロードサイズ検証 (fetch前に実施)
+    const payloadError = validatePayloadSize(
+      requestBody.fileType,
+      requestBody.fileContent
+    );
+
+    if (payloadError) {
+      throw new Error(payloadError);
     }
 
     // APIを呼び出す
@@ -109,6 +112,11 @@ export async function extractKeywordsAndSummary(
     };
   } catch (error) {
     console.error("キーワードと概要の抽出中にエラーが発生しました:", error);
+
+    if (shouldRethrowInputError(error)) {
+      throw error;
+    }
+
     // エラーが発生した場合でも最低限の情報を返す
     return {
       keywords: ["エラー", "抽出失敗"],
@@ -116,6 +124,19 @@ export async function extractKeywordsAndSummary(
       structure: "",
     };
   }
+}
+
+function shouldRethrowInputError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.message.includes("長すぎます") ||
+    error.message.includes("大きすぎます") ||
+    error.message.includes("内容が空です") ||
+    error.message.includes("413")
+  );
 }
 
 // クイズを生成するAPI呼び出し
@@ -143,28 +164,15 @@ export async function generateQuizzes(
 
     // PDFファイルの場合、ファイルの内容を直接取得
     if (file.type === "application/pdf") {
-      try {
-        // PDFファイルをArrayBufferとして読み込み直す
-        const arrayBuffer = await file.arrayBuffer();
-        const base64 = await arrayBufferToBase64(arrayBuffer);
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = await arrayBufferToBase64(arrayBuffer);
 
-        if (!base64) {
-          throw new Error("PDFファイルのエンコードに失敗しました");
-        }
-
-        requestBody.fileContent = base64;
-        requestBody.fileType = file.type;
-      } catch (error) {
-        console.error("PDFファイルの処理中にエラーが発生しました:", error);
-
-        // PDFのテキスト抽出内容があればそれを使用
-        if (typeof fileContent === "string" && fileContent.trim() !== "") {
-          requestBody.fileContent = fileContent;
-          requestBody.fileType = "text/plain";
-        } else {
-          throw new Error("PDFファイルの内容を取得できませんでした");
-        }
+      if (!base64) {
+        throw new Error("PDFファイルのエンコードに失敗しました");
       }
+
+      requestBody.fileContent = base64;
+      requestBody.fileType = file.type;
     } else if (file.type.startsWith("text/")) {
       // テキストファイルの場合
       if (typeof fileContent !== "string" || fileContent.trim() === "") {
@@ -173,27 +181,30 @@ export async function generateQuizzes(
       requestBody.fileContent = fileContent as string;
       requestBody.fileType = file.type;
     } else if (file.type.startsWith("image/")) {
-      // 画像ファイルの場合
-      try {
-        // 画像ファイルをArrayBufferとして読み込み直す
-        const arrayBuffer = await file.arrayBuffer();
-        const base64 = await arrayBufferToBase64(arrayBuffer);
+      const arrayBuffer = await file.arrayBuffer();
+      const base64 = await arrayBufferToBase64(arrayBuffer);
 
-        if (!base64) {
-          throw new Error("画像ファイルのエンコードに失敗しました");
-        }
-
-        requestBody.fileContent = base64;
-        requestBody.fileType = file.type;
-      } catch (error) {
-        console.error("画像ファイルの処理中にエラーが発生しました:", error);
-        throw new Error("画像ファイルの内容を取得できませんでした");
+      if (!base64) {
+        throw new Error("画像ファイルのエンコードに失敗しました");
       }
+
+      requestBody.fileContent = base64;
+      requestBody.fileType = file.type;
     }
 
-    // fileContentが空でないことを確認
-    if (!requestBody.fileContent) {
-      throw new Error("ファイル内容が空です");
+    // ファイル内容とタイプの存在検証
+    if (!requestBody.fileContent || !requestBody.fileType) {
+      throw new Error("ファイル内容またはファイルタイプが提供されていません");
+    }
+
+    // ペイロードサイズ検証
+    const payloadError = validatePayloadSize(
+      requestBody.fileType,
+      requestBody.fileContent
+    );
+
+    if (payloadError) {
+      throw new Error(payloadError);
     }
 
     // APIを呼び出す

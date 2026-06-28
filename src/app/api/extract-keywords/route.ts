@@ -9,6 +9,7 @@ import {
   Type,
 } from "@google/genai";
 import { debugLog, serverErrorLog } from "@/lib/server/safe-logger";
+import { validatePayloadSize } from "@/lib/limits";
 
 // 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
 const allowedOrigin = process.env.FRONTEND_URL;
@@ -56,6 +57,23 @@ export async function POST(request: NextRequest) {
       let errorResponse = NextResponse.json(
         { error: "ファイルタイプが指定されていません" },
         { status: 400 }
+      );
+      return setCorsHeaders(errorResponse);
+    }
+    if (typeof fileType !== "string" || typeof fileContent !== "string") {
+      let errorResponse = NextResponse.json(
+        { error: "不正なリクエスト形式です" },
+        { status: 400 }
+      );
+      return setCorsHeaders(errorResponse);
+    }
+
+    // ペイロードサイズ検証
+    const payloadError = validatePayloadSize(fileType, fileContent);
+    if (payloadError) {
+      let errorResponse = NextResponse.json(
+        { error: payloadError },
+        { status: 413 }
       );
       return setCorsHeaders(errorResponse);
     }
