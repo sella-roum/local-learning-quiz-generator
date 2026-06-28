@@ -1,45 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  GoogleGenAI,
-  GenerateContentResponse,
   Content,
   Part,
-  GenerateContentConfig,
   Schema,
   Type,
 } from "@google/genai";
 import { v4 as uuidv4 } from "uuid";
-import { debugLog, serverErrorLog } from "@/lib/server/safe-logger";
+import { serverErrorLog } from "@/lib/server/safe-logger";
 import { validatePayloadSize } from "@/lib/limits";
-import { getGeminiModelConfig } from "@/lib/server/gemini-config";
+import {
+  generateGeminiJson,
+  GeminiApiError,
+  toGeminiErrorResponse,
+} from "@/lib/server/gemini";
+import { createOptionsResponse, jsonWithCors } from "@/lib/server/cors";
 
-// 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
-const allowedOrigin = process.env.FRONTEND_URL;
+const corsMethods = ["POST"] as const;
 
-// CORSヘッダーを設定するヘルパー関数
-function setCorsHeaders(response: NextResponse): NextResponse {
-  if (allowedOrigin) {
-    response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
-  } else {
-    // 開発環境など、FRONTEND_URLが設定されていない場合は '*' を許可（本番では非推奨）
-    // もしくは、ローカル開発用のURL 'http://localhost:3000' を許可する
-    response.headers.set(
-      "Access-Control-Allow-Origin",
-      process.env.ACCESS_CONTROL_ALLOW_ORIGIN || "http://localhost:3000"
-    );
-  }
-  response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS"); // このルートはPOSTのみ
-  response.headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
-  );
-  return response;
-}
-
-// OPTIONSリクエストハンドラ (プリフライトリクエスト用)
-export async function OPTIONS(request: NextRequest) {
-  const response = new NextResponse(null, { status: 204 });
-  return setCorsHeaders(response);
+export async function OPTIONS() {
+  return createOptionsResponse([...corsMethods]);
 }
 
 // クイズの型定義 (APIレスポンス用)
@@ -62,63 +41,43 @@ export async function POST(request: NextRequest) {
 
     // --- 入力チェック ---
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "キーワードが提供されていません" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
     if (!options || typeof options !== "object") {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "生成オプションが提供されていません" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
     if (!fileContent || !fileType) {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "ファイル内容またはファイルタイプが提供されていません" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
     if (typeof fileType !== "string" || typeof fileContent !== "string") {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "不正なリクエスト形式です" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
 
     // ペイロードサイズ検証
     const payloadError = validatePayloadSize(fileType, fileContent);
     if (payloadError) {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: payloadError },
-        { status: 413 }
+        { status: 413 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
-
-    // --- APIキー取得 ---
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) {
-      let errorResponse = NextResponse.json(
-        {
-          error: "Gemini APIキーが設定されていません。",
-          code: "GEMINI_API_KEY_MISSING",
-        },
-        { status: 500 }
-      );
-      return setCorsHeaders(errorResponse);
-    }
-
-    // --- @google/genai クライアント初期化 ---
-    const ai = new GoogleGenAI({ apiKey });
-
-    // --- モデル設定 ---
-    const { modelIdsToTry, enableThinking, thinkingBudget, thinkingModelIds } =
-      getGeminiModelConfig();
 
     // --- responseSchema (クイズ配列用) ---
     const quizSchema: Schema = {
@@ -200,179 +159,83 @@ export async function POST(request: NextRequest) {
     }
     requestContents.push({ role: "user", parts });
 
-    // --- API呼び出しとリトライ処理 ---
-    let geminiResponse: GenerateContentResponse | null = null;
-    let lastError: any = null;
+    // --- API呼び出し (共通化) ---
+    const { data } = await generateGeminiJson<unknown[]>({
+      route: "generate-quiz",
+      contents: requestContents,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: quizListSchema,
+      },
+      requireJsonArray: true,
+    });
 
-    for (const modelId of modelIdsToTry) {
-      console.log(`モデル ${modelId} でクイズ生成API呼び出しを試行します...`);
-      try {
-        const generationConfig: GenerateContentConfig = {
-          responseMimeType: "application/json",
-          responseSchema: quizListSchema,
-        };
-        if (enableThinking && thinkingModelIds.includes(modelId)) {
-          generationConfig.thinkingConfig = { thinkingBudget };
-        }
-
-        const currentResponse = await ai.models.generateContent({
-          model: modelId,
-          contents: requestContents,
-          config: generationConfig,
-        });
-
-        const resultText = currentResponse.text;
-        debugLog(`モデル ${modelId} からの応答`, {
-          responseLength: resultText?.length ?? 0,
-        });
-
-        if (resultText) {
-          // 応答が配列形式か確認 (簡易チェック)
-          try {
-            const parsed = JSON.parse(resultText);
-            if (Array.isArray(parsed)) {
-              geminiResponse = currentResponse;
-              console.log(`モデル ${modelId} で成功しました。`);
-              break;
-            } else {
-              console.warn(
-                `モデル ${modelId} の応答が配列形式ではありません。`
-              );
-              lastError = new Error(
-                `モデル ${modelId} の応答が配列形式ではありません。`
-              );
-            }
-          } catch (jsonError) {
-            console.warn(`モデル ${modelId} の応答JSONパースに失敗しました。`);
-            lastError = new Error(
-              `モデル ${modelId} の応答JSONパースに失敗しました。`
-            );
-          }
-        } else {
-          console.warn(`モデル ${modelId} からの応答が空でした。`);
-          if (currentResponse.promptFeedback?.blockReason) {
-            console.error(
-              `モデル ${modelId} でリクエストがブロックされました: ${currentResponse.promptFeedback.blockReason}`
-            );
-            geminiResponse = currentResponse; // ブロックされたレスポンスを保持
-            break;
-          }
-          lastError = new Error(
-            `モデル ${modelId} から有効なコンテンツが得られませんでした。`
-          );
-        }
-      } catch (apiError) {
-        lastError = apiError;
-        serverErrorLog(`モデル ${modelId} でのクイズ生成API呼び出しエラー`, {
-          modelId,
-          errorName:
-            apiError instanceof Error ? apiError.name : "UnknownError",
-          route: "generate-quiz",
-        });
-      }
-    }
-
-    // --- 結果処理 ---
-    if (!geminiResponse || !geminiResponse.text) {
-      const blockReason = geminiResponse?.promptFeedback?.blockReason;
-      const errorMsg = blockReason
-        ? `リクエストがブロックされました: ${blockReason}`
-        : "AIモデルとの通信に失敗しました。";
-      const status = blockReason ? 400 : 502;
-      serverErrorLog(errorMsg, {
-        blockReason: blockReason ?? undefined,
-        route: "generate-quiz",
-      });
-
-      let errorResponse = NextResponse.json(
-        {
-          error: errorMsg,
-          details: lastError instanceof Error ? lastError.message : lastError,
-        },
-        { status }
-      );
-      return setCorsHeaders(errorResponse);
-    }
-
-    const resultText = geminiResponse.text;
-
-    // --- JSONパースと検証 ---
-    let generatedQuizzesRaw: any[];
-    try {
-      generatedQuizzesRaw = JSON.parse(resultText);
-      if (!Array.isArray(generatedQuizzesRaw)) {
-        throw new Error("AIからの応答が配列形式ではありません。");
-      }
-    } catch (parseError) {
-      console.error("クイズ生成結果のJSONパースに失敗しました:", parseError);
-      // console.log("Raw response:", resultText);
-      let errorResponse = NextResponse.json(
-        { error: "AIからの応答形式が不正です (JSONパース失敗)。" },
-        { status: 500 }
-      );
-      return setCorsHeaders(errorResponse);
-    }
+    const generatedQuizzesRaw = data;
 
     // --- 生成されたクイズの整形とID付与 ---
     const generatedQuizzes: GeneratedQuiz[] = generatedQuizzesRaw
-      .map((q: any): GeneratedQuiz | null => {
-        // 簡単なバリデーション
+      .map((q: unknown): GeneratedQuiz | null => {
+        const quiz = q as Record<string, unknown>;
         if (
-          !q ||
-          typeof q !== "object" ||
-          typeof q.question !== "string" ||
-          !Array.isArray(q.options) ||
-          q.options.length !== 4 ||
-          typeof q.correctOptionIndex !== "number" ||
-          q.correctOptionIndex < 0 ||
-          q.correctOptionIndex > 3 ||
-          typeof q.explanation !== "string" ||
-          typeof q.category !== "string" ||
-          !["easy", "medium", "hard"].includes(q.difficulty)
+          !quiz ||
+          typeof quiz !== "object" ||
+          typeof quiz.question !== "string" ||
+          !Array.isArray(quiz.options) ||
+          quiz.options.length !== 4 ||
+          typeof quiz.correctOptionIndex !== "number" ||
+          quiz.correctOptionIndex < 0 ||
+          quiz.correctOptionIndex > 3 ||
+          typeof quiz.explanation !== "string" ||
+          typeof quiz.category !== "string" ||
+          !["easy", "medium", "hard"].includes(quiz.difficulty as string)
         ) {
-          debugLog("不正な形式のクイズデータをスキップ", {
-            route: "generate-quiz",
-          });
-          return null; // 不正なデータはスキップ
+          return null;
         }
         return {
-          id: uuidv4(), // 各クイズにユニークIDを付与
-          question: q.question,
-          options: q.options.map(String), // 文字列であることを保証
-          correctOptionIndex: q.correctOptionIndex,
-          explanation: q.explanation,
-          category: q.category || options.category || "一般", // カテゴリのフォールバック
-          difficulty: q.difficulty,
-          keyword: q.keyword, // オプショナルなキーワード
+          id: uuidv4(),
+          question: quiz.question as string,
+          options: (quiz.options as string[]).map(String),
+          correctOptionIndex: quiz.correctOptionIndex as number,
+          explanation: quiz.explanation as string,
+          category: (quiz.category as string) || options.category || "一般",
+          difficulty: quiz.difficulty as "easy" | "medium" | "hard",
+          keyword: quiz.keyword as string | undefined,
         };
       })
-      .filter((q): q is GeneratedQuiz => q !== null); // nullを除外
+      .filter((q): q is GeneratedQuiz => q !== null);
 
     if (generatedQuizzes.length === 0 && generatedQuizzesRaw.length > 0) {
-      console.error("有効なクイズデータが生成されませんでした。");
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "AIからの応答形式が不正です (有効データなし)。" },
-        { status: 500 }
+        { status: 500 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
 
-    let successResponse = NextResponse.json({ quizzes: generatedQuizzes });
-    return setCorsHeaders(successResponse);
+    return jsonWithCors(
+      { quizzes: generatedQuizzes },
+      { status: 200 },
+      [...corsMethods]
+    );
   } catch (error) {
+    if (error instanceof GeminiApiError) {
+      const { body, status } = toGeminiErrorResponse(error);
+      return jsonWithCors(body, { status }, [...corsMethods]);
+    }
+
     serverErrorLog("クイズ生成APIルートで予期せぬエラー", {
       errorName: error instanceof Error ? error.name : "UnknownError",
       route: "generate-quiz",
     });
-    let errorResponse = NextResponse.json(
+    return jsonWithCors(
       {
         error:
           error instanceof Error
             ? error.message
             : "クイズ生成中に予期せぬエラーが発生しました",
       },
-      { status: 500 }
+      { status: 500 },
+      [...corsMethods]
     );
-    return setCorsHeaders(errorResponse);
   }
 }

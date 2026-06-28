@@ -1,44 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  GoogleGenAI,
-  GenerateContentResponse,
   Content,
   Part,
-  GenerateContentConfig,
   Schema,
   Type,
 } from "@google/genai";
 import { serverErrorLog } from "@/lib/server/safe-logger";
 import { validatePayloadSize } from "@/lib/limits";
-import { getGeminiModelConfig } from "@/lib/server/gemini-config";
+import {
+  generateGeminiJson,
+  GeminiApiError,
+  toGeminiErrorResponse,
+} from "@/lib/server/gemini";
+import { createOptionsResponse, jsonWithCors } from "@/lib/server/cors";
 
-// 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
-const allowedOrigin = process.env.FRONTEND_URL;
+const corsMethods = ["POST"] as const;
 
-// CORSヘッダーを設定するヘルパー関数
-function setCorsHeaders(response: NextResponse): NextResponse {
-  if (allowedOrigin) {
-    response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
-  } else {
-    // 開発環境など、FRONTEND_URLが設定されていない場合は '*' を許可（本番では非推奨）
-    // もしくは、ローカル開発用のURL 'http://localhost:3000' を許可する
-    response.headers.set(
-      "Access-Control-Allow-Origin",
-      process.env.ACCESS_CONTROL_ALLOW_ORIGIN || "http://localhost:3000"
-    );
-  }
-  response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS"); // このルートはPOSTのみ
-  response.headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
-  );
-  return response;
-}
-
-// OPTIONSリクエストハンドラ (プリフライトリクエスト用)
-export async function OPTIONS(request: NextRequest) {
-  const response = new NextResponse(null, { status: 204 });
-  return setCorsHeaders(response);
+export async function OPTIONS() {
+  return createOptionsResponse([...corsMethods]);
 }
 
 // POSTリクエストハンドラ
@@ -48,56 +27,36 @@ export async function POST(request: NextRequest) {
 
     // --- 入力チェック ---
     if (!fileContent) {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "ファイル内容が提供されていません" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
     if (!fileType) {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "ファイルタイプが指定されていません" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
     if (typeof fileType !== "string" || typeof fileContent !== "string") {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "不正なリクエスト形式です" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
 
     // ペイロードサイズ検証
     const payloadError = validatePayloadSize(fileType, fileContent);
     if (payloadError) {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: payloadError },
-        { status: 413 }
+        { status: 413 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
-
-    // --- APIキー取得 ---
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) {
-      let errorResponse = NextResponse.json(
-        {
-          error: "Gemini APIキーが設定されていません。",
-          code: "GEMINI_API_KEY_MISSING",
-        },
-        { status: 500 }
-      );
-      return setCorsHeaders(errorResponse);
-    }
-
-    // --- @google/genai クライアント初期化 ---
-    const ai = new GoogleGenAI({ apiKey });
-
-    // --- モデル設定 ---
-    const { modelIdsToTry, enableThinking, thinkingBudget, thinkingModelIds } =
-      getGeminiModelConfig();
 
     // --- responseSchema ---
     const analysisResponseSchema: Schema = {
@@ -131,142 +90,57 @@ export async function POST(request: NextRequest) {
       parts.push({ text: prompt });
       parts.push({ inlineData: { mimeType: fileType, data: fileContent } });
     } else {
-      let errorResponse = NextResponse.json(
+      return jsonWithCors(
         { error: "サポートされていないファイルタイプです。" },
-        { status: 400 }
+        { status: 400 },
+        [...corsMethods]
       );
-      return setCorsHeaders(errorResponse);
     }
     requestContents.push({ role: "user", parts });
 
-    // --- API呼び出しとリトライ処理 ---
-    let geminiResponse: GenerateContentResponse | null = null;
-    let lastError: any = null;
+    // --- API呼び出し (共通化) ---
+    const { data } = await generateGeminiJson<{
+      keywords?: unknown;
+      summary?: unknown;
+      structure?: unknown;
+    }>({
+      route: "extract-keywords-summary",
+      contents: requestContents,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: analysisResponseSchema,
+      },
+      requireJsonObject: true,
+    });
 
-    for (const modelId of modelIdsToTry) {
-      console.log(`モデル ${modelId} でAPI呼び出しを試行します...`);
-      try {
-        const generationConfig: GenerateContentConfig = {
-          responseMimeType: "application/json",
-          responseSchema: analysisResponseSchema,
-        };
-        if (enableThinking && thinkingModelIds.includes(modelId)) {
-          generationConfig.thinkingConfig = { thinkingBudget };
-        }
-
-        const currentResponse = await ai.models.generateContent({
-          model: modelId,
-          contents: requestContents,
-          config: generationConfig,
-        });
-
-        const resultText = currentResponse.text;
-        // console.log(`モデル ${modelId} からの応答テキスト:`, resultText);
-
-        if (resultText) {
-          geminiResponse = currentResponse;
-          console.log(`モデル ${modelId} で成功しました。`);
-          break;
-        } else {
-          console.warn(`モデル ${modelId} からの応答が空でした。`);
-          if (currentResponse.promptFeedback?.blockReason) {
-            console.error(
-              `モデル ${modelId} でリクエストがブロックされました: ${currentResponse.promptFeedback.blockReason}`
-            );
-            geminiResponse = currentResponse; // ブロックされたレスポンスを保持
-            break;
-          }
-          lastError = new Error(
-            `モデル ${modelId} から有効なコンテンツが得られませんでした。`
-          );
-        }
-      } catch (apiError) {
-        lastError = apiError;
-        serverErrorLog(`モデル ${modelId} でのAPI呼び出しエラー`, {
-          modelId,
-          errorName:
-            apiError instanceof Error ? apiError.name : "UnknownError",
-          route: "extract-keywords-summary",
-        });
-      }
-    }
-
-    // --- 結果処理 ---
-    if (!geminiResponse || !geminiResponse.text) {
-      const blockReason = geminiResponse?.promptFeedback?.blockReason;
-      const errorMsg = blockReason
-        ? `リクエストがブロックされました: ${blockReason}`
-        : "AIモデルとの通信に失敗しました。";
-      const status = blockReason ? 400 : 502;
-      serverErrorLog(errorMsg, {
-        blockReason: blockReason ?? undefined,
-        route: "extract-keywords-summary",
-      });
-
-      let errorResponse = NextResponse.json(
-        {
-          error: errorMsg,
-          details: lastError instanceof Error ? lastError.message : lastError,
-        },
-        { status }
-      );
-      return setCorsHeaders(errorResponse);
-    }
-
-    const resultText = geminiResponse.text;
-
-    // --- JSONパースとフォールバック ---
-    let data;
-    try {
-      data = JSON.parse(resultText);
-    } catch (parseError) {
-      console.warn("JSONパース失敗、フォールバック試行:", parseError);
-      const jsonBlockMatch = resultText.match(/```json\s*(\{.*?\})\s*```/s);
-      if (jsonBlockMatch && jsonBlockMatch[1]) {
-        try {
-          data = JSON.parse(jsonBlockMatch[1]);
-        } catch (blockParseError) {
-          console.error("```json ブロックのパース失敗:", blockParseError);
-        }
-      }
-      // 必要であれば更なるフォールバックを追加
-    }
-
-    if (data && typeof data === "object") {
-      let successResponse = NextResponse.json({
-        keywords: data.keywords || [],
-        summary: data.summary || "",
-        structure: data.structure || "",
-      });
-      return setCorsHeaders(successResponse);
-    } else {
-      console.error("JSON形式での応答が見つからないか、パースに失敗しました。");
-      // ここでさらにテキストから情報を抽出するフォールバックロジックを実装することも可能
-      let errorResponse = NextResponse.json(
-        {
-          error: "AIからの応答形式が不正です。",
-          keywords: [],
-          summary: "情報の抽出に失敗しました。",
-          structure: "",
-        },
-        { status: 500 }
-      );
-      return setCorsHeaders(errorResponse);
-    }
+    return jsonWithCors(
+      {
+        keywords: (data as Record<string, unknown>)?.keywords || [],
+        summary: (data as Record<string, unknown>)?.summary || "",
+        structure: (data as Record<string, unknown>)?.structure || "",
+      },
+      { status: 200 },
+      [...corsMethods]
+    );
   } catch (error) {
+    if (error instanceof GeminiApiError) {
+      const { body, status } = toGeminiErrorResponse(error);
+      return jsonWithCors(body, { status }, [...corsMethods]);
+    }
+
     serverErrorLog("APIルートで予期せぬエラー", {
       errorName: error instanceof Error ? error.name : "UnknownError",
       route: "extract-keywords-summary",
     });
-    let errorResponse = NextResponse.json(
+    return jsonWithCors(
       {
         error:
           error instanceof Error
             ? error.message
             : "サーバー内部で予期せぬエラーが発生しました",
       },
-      { status: 500 }
+      { status: 500 },
+      [...corsMethods]
     );
-    return setCorsHeaders(errorResponse);
   }
 }

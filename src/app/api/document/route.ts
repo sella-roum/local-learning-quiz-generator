@@ -2,34 +2,12 @@ import fs from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveDocumentPath } from "@/lib/server/document-path";
 import { serverErrorLog } from "@/lib/server/safe-logger";
+import { createOptionsResponse, jsonWithCors } from "@/lib/server/cors";
 
-// 環境変数からフロントエンドのURLを取得（Renderで設定したもの）
-const allowedOrigin = process.env.FRONTEND_URL;
+const corsMethods = ["GET"] as const;
 
-// CORSヘッダーを設定するヘルパー関数
-function setCorsHeaders(response: NextResponse): NextResponse {
-  if (allowedOrigin) {
-    response.headers.set("Access-Control-Allow-Origin", allowedOrigin);
-  } else {
-    // 開発環境など、FRONTEND_URLが設定されていない場合は '*' を許可（本番では非推奨）
-    // もしくは、ローカル開発用のURL 'http://localhost:3000' を許可する
-    response.headers.set(
-      "Access-Control-Allow-Origin",
-      process.env.ACCESS_CONTROL_ALLOW_ORIGIN || "http://localhost:3000"
-    );
-  }
-  response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS"); // このルートはGETのみ
-  response.headers.set(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
-  );
-  return response;
-}
-
-// OPTIONSリクエストハンドラ (プリフライトリクエスト用)
-export async function OPTIONS(request: NextRequest) {
-  const response = new NextResponse(null, { status: 204 });
-  return setCorsHeaders(response);
+export async function OPTIONS() {
+  return createOptionsResponse([...corsMethods]);
 }
 
 // GETリクエストハンドラ
@@ -38,23 +16,25 @@ export async function GET(request: NextRequest) {
   const resolved = await resolveDocumentPath(fileName);
 
   if (!resolved.ok) {
-    const errorResponse = NextResponse.json(
+    return jsonWithCors(
       { error: resolved.error },
-      { status: resolved.status }
+      { status: resolved.status },
+      [...corsMethods]
     );
-    return setCorsHeaders(errorResponse);
   }
 
   try {
     let markdownContent = await fs.promises.readFile(resolved.filePath, "utf-8");
-    // 画像パスの置換 (Render環境でも /documents/images/ を参照するように)
     markdownContent = markdownContent.replace(
       /images\//g,
       "/documents/images/"
     );
 
-    const response = NextResponse.json({ content: markdownContent });
-    return setCorsHeaders(response);
+    return jsonWithCors(
+      { content: markdownContent },
+      { status: 200 },
+      [...corsMethods]
+    );
   } catch (error) {
     serverErrorLog("Failed to read markdown file", {
       route: "document",
@@ -64,10 +44,10 @@ export async function GET(request: NextRequest) {
           ? String(error.code)
           : undefined,
     });
-    const errorResponse = NextResponse.json(
+    return jsonWithCors(
       { error: "Failed to read document" },
-      { status: 500 }
+      { status: 500 },
+      [...corsMethods]
     );
-    return setCorsHeaders(errorResponse);
   }
 }
