@@ -24,7 +24,6 @@ import {
   HelpCircle,
   Timer,
 } from "lucide-react";
-import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 
@@ -52,7 +51,7 @@ export default function QuizSessionPage() {
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [score, setScore] = useState(0);
-  const [sessionIdState, setSessionId] = useState<string | null>(null);
+  const [isSavingResult, setIsSavingResult] = useState(false);
 
   // 選択肢をシャッフルする関数
   const shuffleQuizOptions = useCallback((quiz: Quiz) => {
@@ -67,90 +66,48 @@ export default function QuizSessionPage() {
   // クイズを取得
   const fetchQuizzes = useCallback(async () => {
     try {
-      // セッションIDがある場合はそのセッションのクイズを取得
-      if (sessionId) {
-        const session = await db.sessions.get(sessionId);
-        if (!session) {
-          setError("セッションが見つかりません");
-          setIsLoading(false);
-          return;
-        }
-
-        // セッションに保存されたクイズIDからクイズを取得
-        const quizPromises = session.quizIds.map((id) => db.quizzes.get(id));
-        const quizResults = await Promise.all(quizPromises);
-        const validQuizzes = quizResults.filter(Boolean) as Quiz[];
-
-        if (validQuizzes.length === 0) {
-          setError("クイズが見つかりません");
-          setIsLoading(false);
-          return;
-        }
-
-        setQuizzes(validQuizzes);
-
-        // 最初の問題の選択肢をシャッフル
-        if (validQuizzes.length > 0) {
-          shuffleQuizOptions(validQuizzes[0]);
-        }
-
-        // タイマーを設定
-        setTimeLeft(timeLimit);
-      } else {
-        // カテゴリに基づいてクイズを取得
-        let allQuizzes: Quiz[];
-
-        if (category === "all") {
-          allQuizzes = await db.quizzes.toArray();
-        } else {
-          allQuizzes = await db.quizzes
-            .where("category")
-            .equals(category)
-            .toArray();
-        }
-
-        if (allQuizzes.length === 0) {
-          setError("選択したカテゴリのクイズがありません");
-          setIsLoading(false);
-          return;
-        }
-
-        // ランダムに選択（または全問）
-        const selectedQuizzes =
-          allQuizzes.length <= count
-            ? allQuizzes
-            : shuffleArray(allQuizzes).slice(0, count);
-
-        setQuizzes(selectedQuizzes);
-
-        // 最初の問題の選択肢をシャッフル
-        if (selectedQuizzes.length > 0) {
-          shuffleQuizOptions(selectedQuizzes[0]);
-        }
-
-        // 新しいセッションIDを生成
-        const newSessionId = uuidv4();
-        setSessionId(newSessionId);
-
-        // セッション情報を保存
-        await db.sessions.add({
-          id: newSessionId,
-          startedAt: new Date(),
-          quizIds: selectedQuizzes.map((q) => q.id as number),
-          category: category !== "all" ? category : undefined,
-          totalQuestions: selectedQuizzes.length,
-        });
-
-        // タイマーを設定
-        setTimeLeft(timeLimit);
+      if (!sessionId) {
+        setError(
+          "セッションIDが指定されていません。クイズ開始画面からやり直してください。"
+        );
+        setIsLoading(false);
+        return;
       }
+
+      const session = await db.sessions.get(sessionId);
+      if (!session) {
+        setError("セッションが見つかりません");
+        setIsLoading(false);
+        return;
+      }
+
+      // セッションに保存されたクイズIDからクイズを取得
+      const quizPromises = session.quizIds.map((id) => db.quizzes.get(id));
+      const quizResults = await Promise.all(quizPromises);
+      const validQuizzes = quizResults.filter(Boolean) as Quiz[];
+
+      if (validQuizzes.length === 0) {
+        setError("クイズが見つかりません");
+        setIsLoading(false);
+        return;
+      }
+
+      setQuizzes(validQuizzes);
+
+      // 最初の問題の選択肢をシャッフル
+      if (validQuizzes.length > 0) {
+        shuffleQuizOptions(validQuizzes[0]);
+      }
+
+      // タイマーを設定
+      setTimeLeft(timeLimit);
     } catch (error) {
       console.error("クイズの取得中にエラーが発生しました:", error);
       setError("クイズの取得中にエラーが発生しました");
     } finally {
       setIsLoading(false);
     }
-  }, [category, count, shuffleQuizOptions, sessionId, timeLimit]);
+  }, [shuffleQuizOptions, sessionId, timeLimit]);
 
   // 初期化時にクイズを取得
   useEffect(() => {
@@ -160,6 +117,10 @@ export default function QuizSessionPage() {
   // 時間切れの処理
   const handleTimeUp = useCallback(async () => {
     if (isAnswered) return;
+    if (!sessionId) {
+      setError("セッションIDが指定されていません。");
+      return;
+    }
 
     setIsAnswered(true);
     setIsCorrect(false);
@@ -172,16 +133,20 @@ export default function QuizSessionPage() {
       selectedOptionIndex: -1, // 時間切れは-1
       isCorrect: false,
       answeredAt: new Date(),
-      sessionId: sessionId!,
+      sessionId,
     };
 
     try {
+      setIsSavingResult(true);
       await db.results.add(result);
-      setResults([...results, result]);
+      setResults((prev) => [...prev, result]);
     } catch (error) {
       console.error("結果の保存中にエラーが発生しました:", error);
+      setError("結果の保存中にエラーが発生しました");
+    } finally {
+      setIsSavingResult(false);
     }
-  }, [currentIndex, isAnswered, quizzes, results, sessionId]);
+  }, [currentIndex, isAnswered, quizzes, sessionId, setIsSavingResult]);
 
   // タイマー処理
   useEffect(() => {
@@ -208,6 +173,10 @@ export default function QuizSessionPage() {
   const handleSelectOption = useCallback(
     async (optionIndex: number) => {
       if (isAnswered) return;
+      if (!sessionId) {
+        setError("セッションIDが指定されていません。");
+        return;
+      }
 
       const originalIndex = shuffledOptions[optionIndex].originalIndex;
       setSelectedOption(optionIndex);
@@ -233,14 +202,18 @@ export default function QuizSessionPage() {
         selectedOptionIndex: originalIndex, // 元の選択肢のインデックスを保存
         isCorrect: correct,
         answeredAt: new Date(),
-        sessionId: sessionId!,
+        sessionId,
       };
 
       try {
+        setIsSavingResult(true);
         await db.results.add(result);
-        setResults([...results, result]);
+        setResults((prev) => [...prev, result]);
       } catch (error) {
         console.error("結果の保存中にエラーが発生しました:", error);
+        setError("結果の保存中にエラーが発生しました");
+      } finally {
+        setIsSavingResult(false);
       }
     },
     [
@@ -248,7 +221,6 @@ export default function QuizSessionPage() {
       isAnswered,
       shuffledOptions,
       quizzes,
-      results,
       sessionId,
       score,
     ]
@@ -256,11 +228,22 @@ export default function QuizSessionPage() {
 
   // セッションを終了して結果画面に遷移
   const finishSession = useCallback(async () => {
+    if (isSavingResult) return;
+    if (!sessionId) {
+      setError("セッションIDが指定されていません。");
+      return;
+    }
+
     try {
-      // セッション情報を更新
-      await db.sessions.update(sessionId!, {
+      // IndexedDB上の保存済み結果からscoreを再計算
+      const sessionResults = await db.results
+        .where("sessionId")
+        .equals(sessionId)
+        .toArray();
+
+      await db.sessions.update(sessionId, {
         endedAt: new Date(),
-        score: results.filter((r) => r.isCorrect).length,
+        score: sessionResults.filter((r) => r.isCorrect).length,
       });
 
       // 結果画面に遷移
@@ -269,7 +252,7 @@ export default function QuizSessionPage() {
       console.error("セッション終了処理中にエラーが発生しました:", error);
       setError("セッション終了処理中にエラーが発生しました");
     }
-  }, [sessionId, router, results]);
+  }, [isSavingResult, sessionId, router]);
 
   // 次の問題に進む
   const handleNextQuestion = useCallback(() => {
@@ -560,11 +543,14 @@ export default function QuizSessionPage() {
                 {isAnswered && (
                   <Button
                     onClick={handleNextQuestion}
+                    disabled={isSavingResult}
                     // モバイルでは上マージン(mt-4)と幅いっぱい(w-full)
                     // sm以上では上マージンなし(sm:mt-0)、幅自動(sm:w-auto)、左マージン(sm:ml-4)
                     className="mt-4 w-full sm:mt-0 sm:w-auto sm:ml-4 bg-primary hover:bg-primary/90"
                   >
-                    {currentIndex < quizzes.length - 1 ? (
+                    {isSavingResult ? (
+                      "保存中..."
+                    ) : currentIndex < quizzes.length - 1 ? (
                       <>
                         次の問題 <ArrowRight className="ml-2 h-4 w-4" />
                       </>
