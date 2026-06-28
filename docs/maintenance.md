@@ -17,7 +17,7 @@ The repository uses Dependabot for automated dependency updates.
 - Auto-merge is enabled for patch and minor updates only (detected via `dependabot/fetch-metadata` `update-type`)
 - Major updates (`update-type === "version-update:semver-major"`) require manual review and are excluded from auto-merge
 - CI must pass before auto-merge (wait-on-check-action)
-- A `DEPENDABOT_MERGE_TOKEN` and `GITHUB_TOKEN` are required for the auto-merge workflow
+- A `DEPENDABOT_MERGE_TOKEN` (set in Dependabot secrets, not repository secrets) and `GITHUB_TOKEN` are required for the auto-merge workflow
 
 ### Manual Update Process
 

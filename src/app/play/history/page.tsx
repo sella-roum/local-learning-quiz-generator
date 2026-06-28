@@ -106,6 +106,17 @@ export default function HistoryPage() {
   const stats = useLiveQuery(async () => {
     const results = await db.results.toArray();
     const allSessions = await db.sessions.toArray();
+
+    // sessionId ごとに事前に Map 化することで、全セッションのループ内で
+    // results.filter を繰り返さないようにする
+    const resultsBySessionId = new Map<string, Result[]>();
+    for (const result of results) {
+      if (!result.sessionId) continue;
+      const sessionResults = resultsBySessionId.get(result.sessionId) ?? [];
+      sessionResults.push(result);
+      resultsBySessionId.set(result.sessionId, sessionResults);
+    }
+
     // 完全なセッションのみ: endedAtがあり、totalQuestionsとactual result countが一致するもの
     const completedSessions: Array<{ session: Session; sessionResults: Result[] }> = [];
 
@@ -113,9 +124,9 @@ export default function HistoryPage() {
       if (!session.endedAt) continue;
       const expected = session.totalQuestions ?? null;
       if (expected === null) continue;
-      const sessionResults = results.filter(
-        (result) => session.id === result.sessionId
-      );
+      const sessionResults = session.id
+        ? resultsBySessionId.get(session.id) ?? []
+        : [];
       if (sessionResults.length !== expected) continue;
       completedSessions.push({ session, sessionResults });
     }

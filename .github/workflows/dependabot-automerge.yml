@@ -3,10 +3,10 @@
 # Automatically merges Dependabot PRs that meet all safety conditions:
 # - Only patch and minor updates (major updates require manual review)
 # - CI must pass (typecheck, lint, test:unit, build)
-# - Secret DEPENDABOT_MERGE_TOKEN must be set in repository secrets
+# - Secret DEPENDABOT_MERGE_TOKEN must be set in Dependabot secrets
 #
-# If DEPENDABOT_MERGE_TOKEN is not set, this workflow will fail gracefully
-# and Dependabot PRs will require manual merge.
+# If DEPENDABOT_MERGE_TOKEN is not set in Dependabot secrets, this workflow
+# will skip auto-merge and Dependabot PRs will require manual merge.
 
 name: Dependabot auto-merge
 

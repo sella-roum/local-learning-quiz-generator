@@ -144,6 +144,7 @@ export function QuizImportDialog({
     try {
       setError(null);
       setImportSummary(null);
+      setImportProgress(0);
       setIsLoading(true);
 
       if (selectedQuizIndices.size === 0) {
@@ -174,6 +175,8 @@ export function QuizImportDialog({
         }
       }
 
+      setImportProgress(40);
+
       // 既存の全クイズのキーを事前に取得（重複検知用）
       const existingQuizzes = await db.quizzes.toArray();
       const existingKeys = new Set(
@@ -200,6 +203,8 @@ export function QuizImportDialog({
         currentFileKeys.add(entry.key);
       }
 
+      setImportProgress(70);
+
       // トランザクション内で一括追加
       if (toAdd.length > 0) {
         await db.transaction("rw", db.quizzes, async () => {
@@ -207,6 +212,7 @@ export function QuizImportDialog({
         });
       }
 
+      setImportProgress(100);
       setIsImportComplete(true);
       setImportSummary(
         `追加 ${toAdd.length}件 / 重複スキップ ${duplicateCount}件` +
