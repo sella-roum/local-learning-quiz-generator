@@ -37,6 +37,40 @@ interface ExtractKeywordsRequestBody {
   fileType: string;
 }
 
+interface ApiErrorResponse {
+  error?: string;
+  code?: string;
+}
+
+async function readApiError(
+  response: Response,
+  fallbackMessage: string
+): Promise<Error> {
+  let errorData: ApiErrorResponse | null = null;
+
+  try {
+    errorData = await response.json();
+  } catch {
+    errorData = null;
+  }
+
+  if (response.status === 413) {
+    return new Error(
+      "内容が大きすぎます。ファイルサイズまたは本文量を減らしてください。"
+    );
+  }
+
+  if (errorData?.code === "GEMINI_API_KEY_MISSING") {
+    return new Error(
+      "Gemini APIキーが設定されていません。.env.local に GEMINI_API_KEY を設定してください。"
+    );
+  }
+
+  return new Error(
+    errorData?.error || `${fallbackMessage} (HTTP ${response.status})`
+  );
+}
+
 export async function extractKeywordsAndSummary(
   file: File,
   fileContent: string | ArrayBuffer
@@ -98,9 +132,9 @@ export async function extractKeywordsAndSummary(
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        errorData.error || "キーワードと概要の抽出に失敗しました"
+      throw await readApiError(
+        response,
+        "キーワードと概要の抽出に失敗しました"
       );
     }
 
@@ -113,7 +147,7 @@ export async function extractKeywordsAndSummary(
   } catch (error) {
     console.error("キーワードと概要の抽出中にエラーが発生しました:", error);
 
-    if (shouldRethrowInputError(error)) {
+    if (shouldRethrowUserFacingError(error)) {
       throw error;
     }
 
@@ -126,7 +160,7 @@ export async function extractKeywordsAndSummary(
   }
 }
 
-function shouldRethrowInputError(error: unknown): boolean {
+function shouldRethrowUserFacingError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
@@ -135,7 +169,9 @@ function shouldRethrowInputError(error: unknown): boolean {
     error.message.includes("長すぎます") ||
     error.message.includes("大きすぎます") ||
     error.message.includes("内容が空です") ||
-    error.message.includes("413")
+    error.message.includes("413") ||
+    error.message.includes("内容が大きすぎます") ||
+    error.message.includes("Gemini APIキーが設定されていません")
   );
 }
 
@@ -217,8 +253,7 @@ export async function generateQuizzes(
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "クイズ生成に失敗しました");
+      throw await readApiError(response, "クイズ生成に失敗しました");
     }
 
     const data = await response.json();
