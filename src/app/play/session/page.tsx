@@ -51,6 +51,7 @@ export default function QuizSessionPage() {
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [score, setScore] = useState(0);
+  const [isSavingResult, setIsSavingResult] = useState(false);
 
   // 選択肢をシャッフルする関数
   const shuffleQuizOptions = useCallback((quiz: Quiz) => {
@@ -136,12 +137,16 @@ export default function QuizSessionPage() {
     };
 
     try {
+      setIsSavingResult(true);
       await db.results.add(result);
-      setResults([...results, result]);
+      setResults((prev) => [...prev, result]);
     } catch (error) {
       console.error("結果の保存中にエラーが発生しました:", error);
+      setError("結果の保存中にエラーが発生しました");
+    } finally {
+      setIsSavingResult(false);
     }
-  }, [currentIndex, isAnswered, quizzes, results, sessionId]);
+  }, [currentIndex, isAnswered, quizzes, sessionId, setIsSavingResult]);
 
   // タイマー処理
   useEffect(() => {
@@ -201,10 +206,14 @@ export default function QuizSessionPage() {
       };
 
       try {
+        setIsSavingResult(true);
         await db.results.add(result);
-        setResults([...results, result]);
+        setResults((prev) => [...prev, result]);
       } catch (error) {
         console.error("結果の保存中にエラーが発生しました:", error);
+        setError("結果の保存中にエラーが発生しました");
+      } finally {
+        setIsSavingResult(false);
       }
     },
     [
@@ -212,7 +221,6 @@ export default function QuizSessionPage() {
       isAnswered,
       shuffledOptions,
       quizzes,
-      results,
       sessionId,
       score,
     ]
@@ -220,16 +228,22 @@ export default function QuizSessionPage() {
 
   // セッションを終了して結果画面に遷移
   const finishSession = useCallback(async () => {
+    if (isSavingResult) return;
     if (!sessionId) {
       setError("セッションIDが指定されていません。");
       return;
     }
 
     try {
-      // セッション情報を更新
+      // IndexedDB上の保存済み結果からscoreを再計算
+      const sessionResults = await db.results
+        .where("sessionId")
+        .equals(sessionId)
+        .toArray();
+
       await db.sessions.update(sessionId, {
         endedAt: new Date(),
-        score: results.filter((r) => r.isCorrect).length,
+        score: sessionResults.filter((r) => r.isCorrect).length,
       });
 
       // 結果画面に遷移
@@ -238,7 +252,7 @@ export default function QuizSessionPage() {
       console.error("セッション終了処理中にエラーが発生しました:", error);
       setError("セッション終了処理中にエラーが発生しました");
     }
-  }, [sessionId, router, results]);
+  }, [isSavingResult, sessionId, router]);
 
   // 次の問題に進む
   const handleNextQuestion = useCallback(() => {
@@ -529,11 +543,14 @@ export default function QuizSessionPage() {
                 {isAnswered && (
                   <Button
                     onClick={handleNextQuestion}
+                    disabled={isSavingResult}
                     // モバイルでは上マージン(mt-4)と幅いっぱい(w-full)
                     // sm以上では上マージンなし(sm:mt-0)、幅自動(sm:w-auto)、左マージン(sm:ml-4)
                     className="mt-4 w-full sm:mt-0 sm:w-auto sm:ml-4 bg-primary hover:bg-primary/90"
                   >
-                    {currentIndex < quizzes.length - 1 ? (
+                    {isSavingResult ? (
+                      "保存中..."
+                    ) : currentIndex < quizzes.length - 1 ? (
                       <>
                         次の問題 <ArrowRight className="ml-2 h-4 w-4" />
                       </>

@@ -95,6 +95,7 @@ export default function CreateQuizPage() {
   const [editMode, setEditMode] = useState(false);
   const [editingQuizIndex, setEditingQuizIndex] = useState<number | null>(null);
   const [qualityWarning, setQualityWarning] = useState<string | null>(null);
+  const [qualityWarningConfirmed, setQualityWarningConfirmed] = useState(false);
 
   // 既存のカテゴリを取得
   const categories = useLiveQuery(async () => {
@@ -132,6 +133,7 @@ export default function CreateQuizPage() {
 
     setIsLoading(true);
     setError(null);
+    setQualityWarningConfirmed(false);
     setGeneratedQuizzes([]);
     setQuizzesToSave([]);
 
@@ -242,6 +244,9 @@ export default function CreateQuizPage() {
 
   // クイズを保存する関数
   const handleSaveQuizzes = useCallback(async () => {
+    setError(null);
+    setQualityWarning(null);
+
     if (quizzesToSave.length === 0) {
       setError("保存するクイズがありません");
       return;
@@ -287,7 +292,6 @@ export default function CreateQuizPage() {
       }
 
       // 保存前品質チェック
-      setQualityWarning(null);
       const qualityReports = normalizedQuizzes.map((q) =>
         checkQuizQuality(q)
       );
@@ -302,10 +306,13 @@ export default function CreateQuizPage() {
         return;
       }
 
-      if (warningReports.length > 0) {
+      if (warningReports.length > 0 && !qualityWarningConfirmed) {
         setQualityWarning(
-          `${warningReports.length}問に品質上の注意があります。例: 解説なし、問題文が短すぎる`
+          `${warningReports.length}問に品質上の注意があります。例: 解説なし、問題文が短すぎる。内容を確認し、問題なければもう一度保存してください。`
         );
+        setQualityWarningConfirmed(true);
+        setIsLoading(false);
+        return;
       }
 
       // 正規化済みクイズをDB保存
@@ -328,7 +335,7 @@ export default function CreateQuizPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [quizzesToSave, generationOptions.category, generationOptions.difficulty, newCategory, router]);
+  }, [quizzesToSave, generationOptions.category, generationOptions.difficulty, newCategory, qualityWarningConfirmed, router]);
 
   // カテゴリ選択の処理
   const handleCategorySelect = (category: string) => {
@@ -348,6 +355,7 @@ export default function CreateQuizPage() {
 
   // クイズの選択状態を切り替える
   const toggleQuizSelection = (index: number) => {
+    setQualityWarningConfirmed(false);
     setQuizzesToSave((prev) => {
       const isSelected = prev.some((q) => q === generatedQuizzes[index]);
 
@@ -388,6 +396,9 @@ export default function CreateQuizPage() {
   const saveEditedQuiz = () => {
     if (editingQuizIndex === null) return;
 
+    setError(null);
+    setQualityWarning(null);
+
     const originalQuiz = generatedQuizzes[editingQuizIndex];
 
     // 編集内容を正規化で検証
@@ -414,7 +425,6 @@ export default function CreateQuizPage() {
     }
 
     // 編集内容の品質チェック
-    setQualityWarning(null);
     const qualityReport = checkQuizQuality(normalized);
     if (qualityReport.hasErrors) {
       setError(
@@ -443,6 +453,7 @@ export default function CreateQuizPage() {
       }
     }
 
+    setQualityWarningConfirmed(false);
     setEditMode(false);
     setEditingQuizIndex(null);
   };

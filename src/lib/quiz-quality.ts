@@ -34,7 +34,7 @@ export interface QuizQualityReport {
  * Warning-level issues allow saving but are reported:
  * - Missing explanation (empty or "解説なし")
  * - Question too short (< 8 characters)
- * - Option too short (< 1 character)
+ * - Option too short, but not empty
  */
 export function checkQuizQuality(
   quiz: GenerateQuizNormalized
@@ -112,7 +112,8 @@ export function checkQuizQuality(
   }
 
   for (let i = 0; i < quiz.options.length; i++) {
-    if (quiz.options[i].trim().length < 1) {
+    const len = quiz.options[i].trim().length;
+    if (len > 0 && len < 2) {
       issues.push({
         severity: "warning",
         code: "SHORT_OPTION",
