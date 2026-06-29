@@ -140,6 +140,8 @@ The app remains local-first because files, quizzes, sessions, and results are st
 
 AI-powered analysis and quiz generation require network access to Gemini and Jina Reader.
 
+A one-time Service Worker retirement helper is included to unregister previously installed Service Workers and clear Cache Storage after removing `next-pwa`. This cleanup does not delete IndexedDB data.
+
 ## Project Architecture
 
 See the following docs for detailed information:
