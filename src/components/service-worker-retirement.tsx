@@ -7,15 +7,16 @@ const RETIREMENT_KEY = "service-worker-retirement-v1";
 export function ServiceWorkerRetirement() {
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(RETIREMENT_KEY) === "done") return;
 
     async function retireServiceWorker() {
       try {
+        if (window.localStorage.getItem(RETIREMENT_KEY) === "done") return;
+
         if ("serviceWorker" in navigator) {
           const registrations =
             await navigator.serviceWorker.getRegistrations();
 
-          await Promise.all(
+          await Promise.allSettled(
             registrations.map((registration) => registration.unregister())
           );
         }
@@ -23,7 +24,7 @@ export function ServiceWorkerRetirement() {
         if ("caches" in window) {
           const cacheKeys = await caches.keys();
 
-          await Promise.all(
+          await Promise.allSettled(
             cacheKeys.map((cacheKey) => caches.delete(cacheKey))
           );
         }
