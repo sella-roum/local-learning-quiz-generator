@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 
-import { useState, useEffect, useCallback, startTransition } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Button } from "@/components/ui/button";
@@ -52,16 +52,6 @@ export default function QuizSessionPage() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [score, setScore] = useState(0);
   const [isSavingResult, setIsSavingResult] = useState(false);
-
-  // 配列をシャッフルする関数
-  const shuffleArray = <T,>(array: T[]): T[] => {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-  };
 
   // 選択肢をシャッフルする関数
   const shuffleQuizOptions = useCallback((quiz: Quiz) => {
@@ -121,9 +111,7 @@ export default function QuizSessionPage() {
 
   // 初期化時にクイズを取得
   useEffect(() => {
-    startTransition(() => {
-      fetchQuizzes();
-    });
+    fetchQuizzes();
   }, [fetchQuizzes]);
 
   // 時間切れの処理
@@ -280,6 +268,16 @@ export default function QuizSessionPage() {
       finishSession();
     }
   }, [currentIndex, quizzes, shuffleQuizOptions, timeLimit, finishSession]);
+
+  // 配列をシャッフルする関数
+  const shuffleArray = <T,>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
 
   if (isLoading) {
     return (

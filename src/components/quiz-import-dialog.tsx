@@ -138,7 +138,7 @@ export function QuizImportDialog({
   );
 
   // フォームをリセット
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFile(null);
     setImportedData(null);
     setSelectedQuizIndices(new Set());
@@ -150,7 +150,7 @@ export function QuizImportDialog({
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  };
+  }, []);
 
   // インポートの実行
   const handleImport = useCallback(async () => {
@@ -251,7 +251,7 @@ export function QuizImportDialog({
     } finally {
       setIsLoading(false);
     }
-  }, [importedData, selectedQuizIndices, onImportComplete, onOpenChange]);
+  }, [importedData, selectedQuizIndices, onImportComplete, onOpenChange, resetForm]);
 
   // ダイアログが閉じられたときにフォームをリセット
   const handleOpenChange = useCallback(
@@ -261,7 +261,7 @@ export function QuizImportDialog({
       }
       onOpenChange(open);
     },
-    [onOpenChange]
+    [onOpenChange, resetForm]
   );
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, startTransition } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/main-layout";
 import { Button } from "@/components/ui/button";
@@ -191,9 +191,7 @@ export default function QuizzesPage() {
 
   // 検索語が変更されたときにページをリセット
   useEffect(() => {
-    startTransition(() => {
-      setCurrentPage(1);
-    });
+    setCurrentPage(1);
   }, [searchTerm, selectedCategory]);
 
   // ページネーションリンクを生成
