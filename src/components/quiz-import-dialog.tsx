@@ -137,6 +137,21 @@ export function QuizImportDialog({
     [selectedQuizIndices]
   );
 
+  // フォームをリセット
+  const resetForm = useCallback(() => {
+    setFile(null);
+    setImportedData(null);
+    setSelectedQuizIndices(new Set());
+    setError(null);
+    setImportSummary(null);
+    setIsLoading(false);
+    setImportProgress(0);
+    setIsImportComplete(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, []);
+
   // インポートの実行
   const handleImport = useCallback(async () => {
     if (!importedData) return;
@@ -236,22 +251,7 @@ export function QuizImportDialog({
     } finally {
       setIsLoading(false);
     }
-  }, [importedData, selectedQuizIndices, onImportComplete, onOpenChange]);
-
-  // フォームをリセット
-  const resetForm = () => {
-    setFile(null);
-    setImportedData(null);
-    setSelectedQuizIndices(new Set());
-    setError(null);
-    setImportSummary(null);
-    setIsLoading(false);
-    setImportProgress(0);
-    setIsImportComplete(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
+  }, [importedData, selectedQuizIndices, onImportComplete, onOpenChange, resetForm]);
 
   // ダイアログが閉じられたときにフォームをリセット
   const handleOpenChange = useCallback(
@@ -261,7 +261,7 @@ export function QuizImportDialog({
       }
       onOpenChange(open);
     },
-    [onOpenChange]
+    [onOpenChange, resetForm]
   );
 
   return (

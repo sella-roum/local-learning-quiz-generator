@@ -190,9 +190,11 @@ export default function QuizzesPage() {
   };
 
   // 検索語が変更されたときにページをリセット
+  /* eslint-disable react-hooks/set-state-in-effect -- setStateは単一のsetterのみでカスケード問題なし */
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedCategory]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ページネーションリンクを生成
   const renderPaginationLinks = () => {

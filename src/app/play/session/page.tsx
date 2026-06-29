@@ -53,6 +53,16 @@ export default function QuizSessionPage() {
   const [score, setScore] = useState(0);
   const [isSavingResult, setIsSavingResult] = useState(false);
 
+  // 配列をシャッフルする関数
+  const shuffleArray = <T,>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
   // 選択肢をシャッフルする関数
   const shuffleQuizOptions = useCallback((quiz: Quiz) => {
     const options = quiz.options.map((text, index) => ({
@@ -110,9 +120,11 @@ export default function QuizSessionPage() {
   }, [shuffleQuizOptions, sessionId, timeLimit]);
 
   // 初期化時にクイズを取得
+  /* eslint-disable react-hooks/set-state-in-effect -- 初期化処理: 非同期fetch後のsetStateは同期的カスケードを発生させない */
   useEffect(() => {
     fetchQuizzes();
   }, [fetchQuizzes]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // 時間切れの処理
   const handleTimeUp = useCallback(async () => {
@@ -268,16 +280,6 @@ export default function QuizSessionPage() {
       finishSession();
     }
   }, [currentIndex, quizzes, shuffleQuizOptions, timeLimit, finishSession]);
-
-  // 配列をシャッフルする関数
-  const shuffleArray = <T,>(array: T[]): T[] => {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-  };
 
   if (isLoading) {
     return (

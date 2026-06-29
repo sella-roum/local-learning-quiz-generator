@@ -19,7 +19,7 @@ A web application that automatically creates 4-choice quizzes from local text, i
 - **Quiz play**: Timed quiz sessions with category selection
 - **Learning history**: Session history with stats and per-question results
 - **Import/Export**: Quiz data in JSON format
-- **PWA support**: Offline quiz browsing and study (AI features require network)
+- **PWA / Offline**: Disabled (see [PWA / Offline support](#pwa--offline-support))
 - **Theme switching**: Light and dark mode
 
 ## Input Support
@@ -132,9 +132,15 @@ npm run build
 npm start
 ```
 
-### PWA Limitations
+### PWA / Offline support
 
-The PWA works offline for browsing and studying existing quizzes, but AI-powered features (quiz generation, keyword extraction) require network access to the Gemini API.
+PWA support is currently disabled.
+
+The app remains local-first because files, quizzes, sessions, and results are stored in IndexedDB. However, offline app shell caching and Service Worker-based offline support are not enabled in the current implementation.
+
+AI-powered analysis and quiz generation require network access to Gemini and Jina Reader.
+
+A one-time Service Worker retirement helper is included to unregister previously installed Service Workers and clear Cache Storage after removing `next-pwa`. This cleanup does not delete IndexedDB data.
 
 ## Project Architecture
 
@@ -166,7 +172,7 @@ These limits apply before data is sent to the Gemini API. They are separate from
 - **Charts**: [Recharts](https://recharts.org/)
 - **Database**: [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) via [Dexie.js](https://dexie.org/)
 - **AI**: [Google Gemini API](https://ai.google.dev/) (`@google/genai`)
-- **PWA**: [next-pwa](https://github.com/shadowwalker/next-pwa)
+- **PWA**: Disabled (planned for future re-implementation)
 
 ## License
 
